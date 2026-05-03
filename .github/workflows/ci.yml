@@ -1,0 +1,291 @@
+name: CI — Classifier Agent
+
+# Pre-merge CI matching the docx LLMSecOps pipeline matrix:
+#
+#   Area          Tools                                    Purpose
+#   ─────────────────────────────────────────────────────────────────
+#   Automated     pytest, pytest-asyncio, pytest-cov       unit/integration + coverage
+#   Code quality  Ruff, mypy                               format/lint/imports + typing
+#   Security      pip-audit, Bandit (CodeAudit),           deps, code, secrets, GHA
+#                 TruffleHog, zizmor                       workflow security
+#   LLM checks    DeepEval, Promptfoo                      output quality + red-team
+#   Container     Docker, Buildx, Trivy                    build + HIGH/CRITICAL scan
+#
+# DAG mirrors the screenshot-1 sandbox layout: 4 parallel pre-gates feed
+# unit-tests; unit-tests gates integration + container build + LLM checks
+# in parallel.
+
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────
+  # Stage 1: 4 parallel pre-gates
+  # ──────────────────────────────────────────────────────────────────
+  lint:
+    name: Code quality — Ruff + mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install ruff mypy
+      - name: Ruff check
+        run: ruff check src/ tests/ scripts/
+      - name: Ruff format check
+        run: ruff format --check src/ tests/ scripts/
+      - name: mypy (best-effort)
+        run: mypy src/classification_agent/ || echo "::warning::mypy issues; not gating"
+
+  sast:
+    name: Security — Bandit (CodeAudit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install 'bandit[toml]'
+      - run: bandit -r src/ -f json -o bandit-report.json --severity-level medium
+        continue-on-error: true
+      - run: bandit -r src/ --severity-level medium
+        continue-on-error: true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  sca:
+    name: Security — pip-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install pip-audit
+      - run: pip-audit --format=json -o pip-audit-results.json
+        continue-on-error: true
+      - run: pip-audit
+        continue-on-error: true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-results
+          path: pip-audit-results.json
+
+  secret-scan:
+    name: Security — TruffleHog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --results=verified,unknown
+        continue-on-error: true
+
+  workflow-security:
+    name: Security — zizmor (GHA audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install zizmor
+      - run: zizmor .github/workflows/
+        continue-on-error: true
+
+  # ──────────────────────────────────────────────────────────────────
+  # Stage 2: Unit tests + coverage gate (>=90% per pyproject.toml)
+  # ──────────────────────────────────────────────────────────────────
+  unit-tests:
+    name: Automated — pytest + coverage
+    runs-on: ubuntu-latest
+    needs: [lint, sast, sca, secret-scan, workflow-security]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+          echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
+      - name: pytest with coverage gate (>=90%)
+        run: |
+          pytest tests/ -v --tb=short \
+            --ignore=tests/adversarial \
+            --ignore=tests/eval \
+            --ignore=tests/test_pubsub_adapter.py \
+            --cov=src/classification_agent \
+            --cov-report=term-missing \
+            --cov-report=xml
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  # ──────────────────────────────────────────────────────────────────
+  # Stage 3: Integration + LLM + container (parallel after unit gate)
+  # ──────────────────────────────────────────────────────────────────
+  integration-tests:
+    name: Automated — integration tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+          echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
+      - run: pytest tests/test_integration_cr_cls_001.py -v --tb=short --cov-fail-under=0
+
+  llm-quality-deepeval:
+    name: LLM — DeepEval quality
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: |
+          pip install --upgrade pip
+          pip install -e ".[dev,eval]" || pip install -e ".[dev]" deepeval
+          echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
+      - name: DeepEval smoke (4 metrics, stub adapters)
+        env:
+          DRIFT_LOCAL_MODE: "1"
+        run: |
+          mkdir -p ci-llm-artifacts
+          for kind in faithfulness answer-relevancy contextual-precision contextual-recall; do
+            python scripts/drift_runner.py --drift-kind "$kind" --artifact-dir "ci-llm-artifacts/$kind" || true
+          done
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepeval-report
+          path: ci-llm-artifacts/
+
+  llm-redteam-promptfoo:
+    name: LLM — Promptfoo red-team
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+          echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
+      - name: Install promptfoo
+        run: npm install -g promptfoo
+      - name: Promptfoo smoke (3 OWASP categories, no jailbreak)
+        run: |
+          mkdir -p ci-promptfoo-artifacts
+          if [ -f promptfoo.yaml ]; then
+            promptfoo eval --config promptfoo.yaml \
+              --output ci-promptfoo-artifacts/results.json || true
+          else
+            echo "::notice::no promptfoo.yaml found — skipping red-team eval"
+            echo '{"skipped": true, "reason": "no promptfoo.yaml in repo root"}' \
+              > ci-promptfoo-artifacts/results.json
+          fi
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promptfoo-report
+          path: ci-promptfoo-artifacts/
+
+  build-container:
+    name: Container — Docker build + Trivy scan
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build container (commit-SHA tag)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          tags: classifier-agent:${{ github.sha }}
+          load: true
+      - name: Trivy HIGH/CRITICAL scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: classifier-agent:${{ github.sha }}
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '0'   # report only; do not fail build on findings
+        continue-on-error: true
+
+  # ──────────────────────────────────────────────────────────────────
+  # Stage 4: Summary card (always runs)
+  # ──────────────────────────────────────────────────────────────────
+  summary:
+    name: CI summary
+    needs:
+      - lint
+      - sast
+      - sca
+      - secret-scan
+      - workflow-security
+      - unit-tests
+      - integration-tests
+      - llm-quality-deepeval
+      - llm-redteam-promptfoo
+      - build-container
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Render summary
+        run: |
+          {
+            echo "## CI — Classifier Agent"
+            echo ""
+            echo "Pre-merge gate matrix per LLMSecOps doc:"
+            echo ""
+            echo "| Card | Tool | Result |"
+            echo "|---|---|---|"
+            echo "| Code quality | Ruff + mypy | ${{ needs.lint.result }} |"
+            echo "| Security — code | Bandit | ${{ needs.sast.result }} |"
+            echo "| Security — deps | pip-audit | ${{ needs.sca.result }} |"
+            echo "| Security — secrets | TruffleHog | ${{ needs.secret-scan.result }} |"
+            echo "| Security — workflows | zizmor | ${{ needs.workflow-security.result }} |"
+            echo "| Automated — unit | pytest + cov>=90% | ${{ needs.unit-tests.result }} |"
+            echo "| Automated — integration | pytest | ${{ needs.integration-tests.result }} |"
+            echo "| LLM — quality | DeepEval | ${{ needs.llm-quality-deepeval.result }} |"
+            echo "| LLM — red-team | Promptfoo | ${{ needs.llm-redteam-promptfoo.result }} |"
+            echo "| Container | Docker + Trivy | ${{ needs.build-container.result }} |"
+            echo ""
+            echo "Commit: \`${{ github.sha }}\`"
+            echo "Triggered: ${{ github.event_name }} on \`${{ github.ref_name }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

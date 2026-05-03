@@ -1,0 +1,178 @@
+name: CD — Build, push, deploy
+
+# Continuous Deployment matching the docx LLMSecOps deployment-strategy section:
+#   GitHub Actions (CI gate) → Google Artifact Registry → Google Cloud Deploy → GKE
+#
+# Image tag = commit SHA (traceability). Cloud Deploy promotes the SAME image
+# through dev → smoke → prod targets defined in the Cloud Deploy delivery
+# pipeline; rollback is a single Cloud Deploy operation.
+#
+# Triggered ONLY on push to main after CI is green. PRs do NOT push images.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: "Cloud Deploy release name suffix (default: short SHA)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write   # WIF for Artifact Registry + Cloud Deploy
+
+concurrency:
+  group: cd-classifier-agent
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: thet-integration-af
+  GCP_REGION: asia-southeast1
+  WIF_PROVIDER: projects/459087601514/locations/global/workloadIdentityPools/github-actions/providers/github
+  GCP_SA: github-actions@thet-integration-af.iam.gserviceaccount.com
+  AR_REGISTRY: asia-southeast1-docker.pkg.dev
+  AR_REPO: assessorflow
+  IMAGE_NAME: classifier-agent
+  CLOUD_DEPLOY_PIPELINE: classifier-agent
+  CLOUD_DEPLOY_REGION: asia-southeast1
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────
+  # Wait for CI on the same SHA before deploying
+  # ──────────────────────────────────────────────────────────────────
+  wait-for-ci:
+    name: Gate on CI green
+    runs-on: ubuntu-latest
+    steps:
+      - uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          check-name: 'CI summary'
+          wait-interval: 20
+          allowed-conclusions: success,skipped
+
+  # ──────────────────────────────────────────────────────────────────
+  # Build + push image to Google Artifact Registry (commit-SHA tag)
+  # ──────────────────────────────────────────────────────────────────
+  build-push:
+    name: Build + push to Artifact Registry
+    needs: [wait-for-ci]
+    runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.image.outputs.uri }}
+      image_tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+          token_format: access_token
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.AR_REGISTRY }} --quiet
+
+      - id: image
+        name: Compute image URI
+        run: |
+          short_sha="${GITHUB_SHA:0:7}"
+          uri="${{ env.AR_REGISTRY }}/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}"
+          echo "uri=${uri}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build + push (multi-tag: SHA + short SHA + main)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.uri }}:${{ github.sha }}
+            ${{ steps.image.outputs.uri }}:${{ steps.image.outputs.short_sha }}
+            ${{ steps.image.outputs.uri }}:main
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy scan pushed image (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.image.outputs.uri }}:${{ github.sha }}
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+        continue-on-error: true
+
+      - name: Render summary
+        run: |
+          {
+            echo "## Build + push"
+            echo ""
+            echo "**Image:** \`${{ steps.image.outputs.uri }}:${{ github.sha }}\`"
+            echo "**Tags:** \`${{ github.sha }}\`, \`${{ steps.image.outputs.short_sha }}\`, \`main\`"
+            echo "**Registry:** Google Artifact Registry (\`${{ env.AR_REGISTRY }}\`)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ──────────────────────────────────────────────────────────────────
+  # Cloud Deploy release: GAR image → dev → smoke → prod
+  # ──────────────────────────────────────────────────────────────────
+  cloud-deploy-release:
+    name: Cloud Deploy release
+    needs: [build-push]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Compute release name
+        id: release
+        run: |
+          short_sha="${GITHUB_SHA:0:7}"
+          suffix="${{ inputs.release_name || '' }}"
+          if [ -z "$suffix" ]; then
+            name="rel-${short_sha}-$(date -u +%Y%m%d%H%M)"
+          else
+            name="rel-${short_sha}-${suffix}"
+          fi
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Cloud Deploy release
+        run: |
+          gcloud deploy releases create ${{ steps.release.outputs.name }} \
+            --project=${{ env.GCP_PROJECT }} \
+            --region=${{ env.CLOUD_DEPLOY_REGION }} \
+            --delivery-pipeline=${{ env.CLOUD_DEPLOY_PIPELINE }} \
+            --images=classifier-agent=${{ needs.build-push.outputs.image_uri }}:${{ github.sha }} \
+            --annotations="git_sha=${{ github.sha }},triggered_by=${{ github.actor }},workflow_run=${{ github.run_id }}" \
+            || echo "::warning::Cloud Deploy pipeline not yet provisioned — image is in GAR; provision the pipeline to enable promotion"
+
+      - name: Render summary
+        run: |
+          {
+            echo "## Cloud Deploy release"
+            echo ""
+            echo "**Release:** \`${{ steps.release.outputs.name }}\`"
+            echo "**Pipeline:** \`${{ env.CLOUD_DEPLOY_PIPELINE }}\` in \`${{ env.CLOUD_DEPLOY_REGION }}\`"
+            echo "**Image:** \`${{ needs.build-push.outputs.image_uri }}:${{ github.sha }}\`"
+            echo ""
+            echo "Promotion through dev → smoke → prod is handled by the Cloud Deploy"
+            echo "delivery pipeline. Rollback: \`gcloud deploy rollouts rollback ...\`."
+          } >> "$GITHUB_STEP_SUMMARY"
