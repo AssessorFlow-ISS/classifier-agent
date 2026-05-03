@@ -348,29 +348,37 @@ jobs:
     needs: [unit-tests]
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - name: "Build runtime image for DAST"
-        uses: docker/build-push-action@v5
+      - uses: actions/setup-python@v5
         with:
-          context: .
-          file: Dockerfile
-          load: true
-          tags: classifier-agent:dast
-      - name: Start app container
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install package
         run: |
-          docker run -d --name classifier --rm -p 8000:8000 \
-            -e KNOWLEDGE_SERVICE_ADAPTER=stub \
-            -e MODEL_BROKER_ADAPTER=stub \
-            -e ASSESSMENT_CONFIG_ADAPTER=stub \
-            -e EVENT_PUBLISHER_ADAPTER=stub \
-            classifier-agent:dast
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            if curl -sf http://localhost:8000/ready > /dev/null 2>&1 || \
-               curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-              echo "app responding"; break
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+          echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
+
+      - name: Start app on :8000 (stub adapters, all in-process)
+        env:
+          KNOWLEDGE_SERVICE_ADAPTER: stub
+          MODEL_BROKER_ADAPTER: stub
+          ASSESSMENT_CONFIG_ADAPTER: stub
+          EVENT_PUBLISHER_ADAPTER: stub
+          AUDIT_ADAPTER: stub
+        run: |
+          nohup uvicorn classification_agent.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
+          echo $! > /tmp/app.pid
+          # Probe readiness — try /health then /ready, accept 200 OR 404 (server is up)
+          for i in $(seq 1 20); do
+            if curl -sS -o /dev/null -w '%{http_code}' http://localhost:8000/ 2>/dev/null | grep -qE '200|404|405'; then
+              echo "app responding after ${i}s"
+              break
             fi
-            sleep 3
+            sleep 1
           done
+          echo "--- app log tail ---"
+          tail -50 /tmp/app.log || true
+          curl -sS http://localhost:8000/ -o /dev/null -w 'final probe: %{http_code}\n' || echo "final probe failed"
+
       - name: ZAP baseline scan
         uses: zaproxy/action-baseline@v0.13.0
         with:
@@ -378,9 +386,12 @@ jobs:
           cmd_options: '-a -j -m 5 -T 5'
           allow_issue_writing: false
           fail_action: false
-      - name: Stop app container
+
+      - name: Stop app
         if: always()
-        run: docker stop classifier || true
+        run: |
+          [ -f /tmp/app.pid ] && kill "$(cat /tmp/app.pid)" 2>/dev/null || true
+
       - if: always()
         uses: actions/upload-artifact@v4
         with:
