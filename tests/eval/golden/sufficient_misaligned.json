@@ -1,0 +1,134 @@
+[
+    {
+        "test_id": "cls-gold-010",
+        "description": "Sufficient OOP material but rubric covers unrelated domain (history), falls back to system default",
+        "input": {
+            "workflow_id": "wf-gold-010",
+            "assessment_id": "assess-gold-010",
+            "chunks_fixture": "oop_chunks.json",
+            "config": {
+                "assessment_title": "Computer Science Fundamentals",
+                "structured_question_count": 10,
+                "non_structured_question_count": 5,
+                "difficulty_level": "medium",
+                "web_research_mode": "manual"
+            },
+            "rubric_setup": {
+                "policy_type": "system_default",
+                "content": "Assess understanding of historical events from the Renaissance period including art, politics, and cultural movements.",
+                "source": "admin_seeded"
+            }
+        },
+        "expected_output": {
+            "sufficient": true,
+            "topic_count_range": [3, 8],
+            "rubric_fitness": {
+                "is_aligned": false,
+                "rubric_source": "system_default",
+                "recommendation": "synthesize_new"
+            },
+            "autonomy_exercised": false,
+            "has_gap_analysis": false,
+            "has_topics": true
+        },
+        "tags": ["sufficient", "rubric-misaligned", "system-default", "synthesize-new"]
+    },
+    {
+        "test_id": "cls-gold-011",
+        "description": "Sufficient material, no assessor rubric exists, system default partially aligned",
+        "input": {
+            "workflow_id": "wf-gold-011",
+            "assessment_id": "assess-gold-011",
+            "chunks_fixture": "oop_chunks.json",
+            "config": {
+                "assessment_title": "Programming Principles",
+                "structured_question_count": 8,
+                "non_structured_question_count": 2,
+                "difficulty_level": "medium",
+                "web_research_mode": "manual"
+            },
+            "rubric_setup": {
+                "policy_type": "system_default",
+                "content": "Generic assessment rubric: evaluate knowledge recall, application, and analysis of core subject concepts.",
+                "source": "admin_seeded"
+            }
+        },
+        "expected_output": {
+            "sufficient": true,
+            "topic_count_range": [2, 6],
+            "rubric_fitness": {
+                "is_aligned": false,
+                "rubric_source": "system_default",
+                "recommendation": "synthesize_new"
+            },
+            "autonomy_exercised": false,
+            "has_gap_analysis": false,
+            "has_topics": true
+        },
+        "tags": ["sufficient", "rubric-misaligned", "system-default-fallback"]
+    },
+    {
+        "test_id": "cls-gold-012",
+        "description": "Sufficient material, no rubric found at all in Policy KB",
+        "input": {
+            "workflow_id": "wf-gold-012",
+            "assessment_id": "assess-gold-012",
+            "chunks_fixture": "oop_chunks.json",
+            "config": {
+                "assessment_title": "Data Structures and Algorithms",
+                "structured_question_count": 10,
+                "non_structured_question_count": 5,
+                "difficulty_level": "hard",
+                "web_research_mode": "manual"
+            },
+            "rubric_setup": null
+        },
+        "expected_output": {
+            "sufficient": true,
+            "topic_count_range": [3, 8],
+            "rubric_fitness": {
+                "is_aligned": false,
+                "rubric_source": "none",
+                "recommendation": "synthesize_new"
+            },
+            "autonomy_exercised": false,
+            "has_gap_analysis": false,
+            "has_topics": true
+        },
+        "tags": ["sufficient", "no-rubric", "synthesize-new"]
+    },
+    {
+        "test_id": "cls-gold-013",
+        "description": "Sufficient mixed OCR+direct material, system default rubric misaligned",
+        "input": {
+            "workflow_id": "wf-gold-013",
+            "assessment_id": "assess-gold-013",
+            "chunks_fixture": "ocr_chunks.json",
+            "config": {
+                "assessment_title": "Software Engineering Basics",
+                "structured_question_count": 5,
+                "non_structured_question_count": 0,
+                "difficulty_level": "easy",
+                "web_research_mode": "manual"
+            },
+            "rubric_setup": {
+                "policy_type": "system_default",
+                "content": "Evaluate understanding of molecular biology including DNA replication, transcription, and protein synthesis.",
+                "source": "admin_seeded"
+            }
+        },
+        "expected_output": {
+            "sufficient": true,
+            "topic_count_range": [2, 6],
+            "rubric_fitness": {
+                "is_aligned": false,
+                "rubric_source": "system_default",
+                "recommendation": "synthesize_new"
+            },
+            "autonomy_exercised": false,
+            "has_gap_analysis": false,
+            "has_topics": true
+        },
+        "tags": ["sufficient", "rubric-misaligned", "ocr-mixed", "easy-difficulty"]
+    }
+]

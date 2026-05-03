@@ -1,0 +1,13 @@
+{
+  "tests": 5,
+  "passed": 2,
+  "failed": 3,
+  "request_count": 5,
+  "requests_per_test": 1.0,
+  "total_prompt_tokens": 2686,
+  "total_completion_tokens": 2481,
+  "total_tokens": 5167,
+  "cost_usd": 0.001425,
+  "route": "http://localhost:8010",
+  "mode": "live"
+}

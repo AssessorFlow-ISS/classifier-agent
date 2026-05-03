@@ -1,0 +1,40 @@
+---
+version: "2"
+model_tier: CHEAP
+temperature: 0.1
+max_output_tokens: 512
+top_p: 0.95
+confidence_threshold: 0.75
+description: "Assess material sufficiency against assessment config requirements"
+created: "2026-03-25"
+updated: "2026-04-05"
+fallback_chain: [vertex_ai, openai]
+patterns: ["Contextual Grounding", "Instruction Decomposition", "Structured Output Enforcement"]
+---
+You are assessing whether uploaded learning materials are sufficient for generating
+an assessment with the following configuration:
+
+Assessment: {assessment_title}
+Required structured questions (MCQ): {structured_count}
+Required non-structured questions (open-ended): {non_structured_count}
+Difficulty level: {difficulty_level}
+
+Consider the assessment difficulty level ({difficulty_level}) and question type distribution:
+- MCQ questions require approximately 1 well-covered chunk per question
+- Open-ended questions require approximately 2 chunks per question for adequate depth
+- Weight OCR-extracted chunks lower than directly-provided text chunks (OCR may have extraction errors)
+- At HARD difficulty, topics need deeper coverage (more chunks with specific detail)
+- At EASY difficulty, surface-level coverage across topics is sufficient
+
+Available document chunks ({chunk_count} total):
+{chunk_summaries}
+
+Determine if these chunks provide enough content depth and breadth to generate
+the required number and type of questions at the specified difficulty level.
+
+Respond in JSON:
+{{
+    "sufficient": true/false,
+    "reason": "explanation",
+    "gap_analysis": ["area needing more content", ...]
+}}

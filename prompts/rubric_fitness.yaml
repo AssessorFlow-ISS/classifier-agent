@@ -1,0 +1,46 @@
+---
+version: "2"
+model_tier: CHEAP
+temperature: 0.1
+max_output_tokens: 512
+top_p: 0.95
+confidence_threshold: 0.75
+description: "Assess rubric-material fitness — topical OR generic-skill rubric"
+created: "2026-03-30"
+updated: "2026-04-18"
+fallback_chain: [vertex_ai, openai]
+---
+You are assessing whether the provided grading rubric is FIT FOR USE
+when grading student answers about the given material topics.
+
+Rubric content:
+{rubric_content}
+
+Material topics: {topic_summary}
+
+There are TWO valid kinds of rubrics — both can score 1.0:
+
+A) **Topical rubric** — criteria reference specific topics in the material
+   (e.g., "Demonstrates understanding of Sprint events", "Explains Scrum values").
+   Score by HOW WELL the criteria cover the topics.
+
+B) **Generic skill rubric** — criteria evaluate cross-cutting skills like
+   language proficiency, grammar/clarity, comprehension, critical thinking,
+   structure, evidence use. These rubrics are intentionally TOPIC-AGNOSTIC
+   and apply to ANY subject. They are FIT-FOR-USE on any material.
+   For these, score 0.85–1.0 unless the rubric is for a clearly inappropriate
+   modality (e.g. a math-grading rubric for an essay assessment).
+
+Decision rules:
+- If the rubric reads as topic-coverage criteria → use mode A.
+- If the rubric reads as skill/language/clarity criteria → use mode B.
+- If mixed → grade the topical part with A, weight by proportion.
+
+Respond in JSON:
+{{
+    "is_aligned": true/false,
+    "alignment_score": 0.0-1.0,
+    "rubric_mode": "topical" | "generic_skill" | "mixed",
+    "gap_description": "description of misalignment, or null if fit for use",
+    "recommendation": "use_as_is" | "supplement" | "synthesize_new"
+}}

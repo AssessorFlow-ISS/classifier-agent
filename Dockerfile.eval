@@ -1,0 +1,12 @@
+# Eval image — extends production image with DeepEval + test harness
+# Used for K8s Jobs in af-golden namespace (model baselining)
+FROM asia-southeast1-docker.pkg.dev/langfusepipelineaflow/assessorflow/classification-agent:latest
+
+RUN pip install --no-cache-dir "deepeval>=3.9" "deepteam>=1.0.6" "litellm[google]" "google-cloud-storage"
+
+COPY tests/ tests/
+COPY golden_workflow_eval.py golden_workflow_eval.py
+
+WORKDIR /app
+
+CMD ["python", "tests/eval/smoke_quality_eval.py"]

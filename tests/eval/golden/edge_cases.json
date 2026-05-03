@@ -1,0 +1,152 @@
+[
+    {
+        "test_id": "cls-gold-040",
+        "description": "Empty chunks list (no material uploaded), should be insufficient",
+        "input": {
+            "workflow_id": "wf-gold-040",
+            "assessment_id": "assess-gold-040",
+            "chunks": [],
+            "config": {
+                "assessment_title": "Empty Assessment",
+                "structured_question_count": 5,
+                "non_structured_question_count": 5,
+                "difficulty_level": "medium",
+                "web_research_mode": "manual"
+            },
+            "rubric_setup": null
+        },
+        "expected_output": {
+            "sufficient": false,
+            "autonomy_exercised": false,
+            "has_gap_analysis": true,
+            "has_topics": false
+        },
+        "tags": ["edge-case", "empty-chunks", "boundary"]
+    },
+    {
+        "test_id": "cls-gold-041",
+        "description": "All OCR-extracted chunks (weighted at 0.5 each), borderline sufficiency",
+        "input": {
+            "workflow_id": "wf-gold-041",
+            "assessment_id": "assess-gold-041",
+            "chunks_fixture": "ocr_chunks.json",
+            "config": {
+                "assessment_title": "Scanned Document Assessment",
+                "structured_question_count": 3,
+                "non_structured_question_count": 0,
+                "difficulty_level": "easy",
+                "web_research_mode": "manual"
+            },
+            "rubric_setup": {
+                "policy_type": "system_default",
+                "content": "Basic assessment rubric for foundational concepts.",
+                "source": "admin_seeded"
+            }
+        },
+        "expected_output": {
+            "sufficient": true,
+            "topic_count_range": [2, 5],
+            "autonomy_exercised": false,
+            "has_gap_analysis": false,
+            "has_topics": true
+        },
+        "tags": ["edge-case", "ocr-only", "borderline-sufficient"]
+    },
+    {
+        "test_id": "cls-gold-042",
+        "description": "Minimal config (0 MCQ + 1 OE = threshold 2), single direct chunk should suffice",
+        "input": {
+            "workflow_id": "wf-gold-042",
+            "assessment_id": "assess-gold-042",
+            "chunks": [
+                {
+                    "chunk_id": "minimal-chunk-001",
+                    "workflow_id": "wf-gold-042",
+                    "content": "Machine learning is a subset of artificial intelligence that enables systems to learn and improve from experience without being explicitly programmed.",
+                    "source_type": "direct_text",
+                    "metadata": {}
+                },
+                {
+                    "chunk_id": "minimal-chunk-002",
+                    "workflow_id": "wf-gold-042",
+                    "content": "Supervised learning uses labeled datasets to train algorithms, while unsupervised learning discovers hidden patterns in unlabeled data.",
+                    "source_type": "direct_text",
+                    "metadata": {}
+                }
+            ],
+            "config": {
+                "assessment_title": "ML Quick Quiz",
+                "structured_question_count": 0,
+                "non_structured_question_count": 1,
+                "difficulty_level": "easy",
+                "web_research_mode": "manual"
+            },
+            "rubric_setup": null
+        },
+        "expected_output": {
+            "sufficient": true,
+            "topic_count_range": [1, 3],
+            "autonomy_exercised": false,
+            "has_gap_analysis": false,
+            "has_topics": true
+        },
+        "tags": ["edge-case", "minimal-config", "low-threshold"]
+    },
+    {
+        "test_id": "cls-gold-043",
+        "description": "Topics-only classification type (skip sufficiency check entirely)",
+        "input": {
+            "workflow_id": "wf-gold-043",
+            "assessment_id": "assess-gold-043",
+            "chunks_fixture": "thin_chunks.json",
+            "config": {
+                "assessment_title": "Topic Extraction Only",
+                "structured_question_count": 10,
+                "non_structured_question_count": 5,
+                "difficulty_level": "medium",
+                "web_research_mode": "manual"
+            },
+            "classification_type": "topics_only"
+        },
+        "expected_output": {
+            "sufficient": true,
+            "topic_count_range": [1, 5],
+            "autonomy_exercised": false,
+            "has_gap_analysis": false,
+            "has_topics": true
+        },
+        "tags": ["edge-case", "topics-only", "skip-sufficiency"]
+    },
+    {
+        "test_id": "cls-gold-044",
+        "description": "Single OCR chunk with very short content, insufficient for any config",
+        "input": {
+            "workflow_id": "wf-gold-044",
+            "assessment_id": "assess-gold-044",
+            "chunks": [
+                {
+                    "chunk_id": "tiny-chunk-001",
+                    "workflow_id": "wf-gold-044",
+                    "content": "Programming involves writing code.",
+                    "source_type": "ocr_extracted",
+                    "metadata": {"ocr_confidence": 0.65}
+                }
+            ],
+            "config": {
+                "assessment_title": "Comprehensive Exam",
+                "structured_question_count": 10,
+                "non_structured_question_count": 10,
+                "difficulty_level": "hard",
+                "web_research_mode": "manual"
+            },
+            "rubric_setup": null
+        },
+        "expected_output": {
+            "sufficient": false,
+            "autonomy_exercised": false,
+            "has_gap_analysis": true,
+            "has_topics": false
+        },
+        "tags": ["edge-case", "single-ocr-chunk", "minimal-content", "high-threshold"]
+    }
+]

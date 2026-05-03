@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "classification-agent"
+version = "0.1.0"
+description = "Classification Agent (#4) — material sufficiency assessment and topic extraction"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "structlog>=24.0",
+    "google-cloud-pubsub>=2.0",
+    "asyncpg>=0.30.0",
+    "grpcio>=1.74.0",
+    "grpcio-tools>=1.74.0",
+    "protobuf>=5.29.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0",
+    "httpx>=0.27.0",
+]
+eval = [
+    "deepeval>=2.0",
+    "deepteam>=1.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "eval: DeepEval quality evaluation tests (require LLM API key)",
+]
+# Coverage floor enforced after Phase 1 refactor (use-case split):
+# baseline raised from 93% → 95%; floor set at 90% so future regressions fail CI
+# but contributors have headroom for small new modules. Override via:
+#   pytest --cov-fail-under=0  (e.g. when iterating on a single test)
+addopts = "--cov-fail-under=90"
+
+[tool.coverage.run]
+source = ["src/classification_agent"]
+# Auto-generated gRPC stubs (mirrors ruff extend-exclude above) are not
+# meaningful to cover — regenerated from proto/submission.proto via
+# grpc_tools.protoc and should not be hand-tested.
+omit = [
+    "src/classification_agent/_grpc/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/classification_agent"]
+
+[tool.ruff]
+# Exclude auto-generated gRPC stubs from linting -- regenerated from
+# proto/submission.proto via grpc_tools.protoc and should not be hand-edited.
+extend-exclude = ["src/classification_agent/_grpc"]

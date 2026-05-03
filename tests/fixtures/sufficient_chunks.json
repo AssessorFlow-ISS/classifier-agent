@@ -1,0 +1,122 @@
+[
+    {
+        "chunk_id": "chunk-001",
+        "workflow_id": "wf-test",
+        "content": "Object-Oriented Programming (OOP) is a programming paradigm based on the concept of objects, which contain data in the form of fields and code in the form of procedures.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-002",
+        "workflow_id": "wf-test",
+        "content": "Encapsulation is the bundling of data and methods that operate on that data within a single unit or class. It restricts direct access to some of an object's components.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-003",
+        "workflow_id": "wf-test",
+        "content": "Polymorphism allows objects of different classes to be treated as objects of a common superclass. Method overriding and method overloading are forms of polymorphism.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-004",
+        "workflow_id": "wf-test",
+        "content": "Inheritance is a mechanism where a new class derives properties and behavior from an existing class. It supports code reuse and establishes a hierarchical relationship.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-005",
+        "workflow_id": "wf-test",
+        "content": "Data structures are ways of organizing and storing data for efficient access and modification. Common data structures include arrays, linked lists, stacks, and queues.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-006",
+        "workflow_id": "wf-test",
+        "content": "Hash maps provide O(1) average time complexity for insertion, deletion, and lookup operations. They use a hash function to compute an index into an array of buckets.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-007",
+        "workflow_id": "wf-test",
+        "content": "Sorting algorithms arrange elements of a list in a certain order. Common sorting algorithms include quicksort, mergesort, heapsort, and insertion sort with varying time complexities.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-008",
+        "workflow_id": "wf-test",
+        "content": "Binary search is a search algorithm that finds the position of a target value within a sorted array. It compares the target value to the middle element of the array.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-009",
+        "workflow_id": "wf-test",
+        "content": "Relational databases organize data into tables with rows and columns. SQL (Structured Query Language) is used to manage and query relational database management systems.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-010",
+        "workflow_id": "wf-test",
+        "content": "Computer networking involves the practice of connecting computers and devices to share resources. The TCP/IP protocol suite is the foundation of internet communications.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-011",
+        "workflow_id": "wf-test",
+        "content": "Abstraction is a core principle of OOP that involves hiding complex implementation details and showing only the necessary features of an object to the outside world.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-012",
+        "workflow_id": "wf-test",
+        "content": "Trees are hierarchical data structures consisting of nodes connected by edges. Binary trees, AVL trees, and B-trees are commonly used for efficient data retrieval and storage.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-013",
+        "workflow_id": "wf-test",
+        "content": "Graph algorithms solve problems related to graph theory, including shortest path (Dijkstra's, Bellman-Ford), minimum spanning tree (Kruskal's, Prim's), and graph traversal (BFS, DFS).",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-014",
+        "workflow_id": "wf-test",
+        "content": "Design patterns are reusable solutions to commonly occurring problems in software design. The Singleton, Factory, Observer, and Strategy patterns are among the most widely used.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-015",
+        "workflow_id": "wf-test",
+        "content": "Recursion is a technique where a function calls itself to solve smaller instances of the same problem. Base cases prevent infinite recursion and stack overflow errors.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-016",
+        "workflow_id": "wf-test",
+        "content": "Concurrency involves executing multiple tasks simultaneously. Threads, processes, and asynchronous programming are common approaches to achieving concurrency in modern software.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-017",
+        "workflow_id": "wf-test",
+        "content": "Memory management is the process of controlling and coordinating computer memory. Garbage collection, reference counting, and manual memory management are different approaches.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-018",
+        "workflow_id": "wf-test",
+        "content": "Software testing ensures that software meets requirements and is free of defects. Unit testing, integration testing, and system testing are levels of the testing pyramid.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-019",
+        "workflow_id": "wf-test",
+        "content": "Version control systems track changes to source code over time. Git is the most widely used distributed version control system, supporting branching and merging workflows.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-020",
+        "workflow_id": "wf-test",
+        "content": "API design involves creating interfaces that allow different software systems to communicate. RESTful APIs use HTTP methods and follow resource-oriented architecture principles.",
+        "source_type": "direct_text"
+    }
+]

@@ -1,0 +1,23 @@
+[
+    {
+        "chunk_id": "thin-chunk-001",
+        "workflow_id": "wf-gold-insuff",
+        "content": "A brief introduction to programming. Programming is the process of creating instructions that tell a computer how to perform a task.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Programming Basics", "section": "Introduction"}
+    },
+    {
+        "chunk_id": "thin-chunk-002",
+        "workflow_id": "wf-gold-insuff",
+        "content": "Variables store data values. In most programming languages, variables have a type that determines what kind of data they can hold, such as integers, strings, or booleans.",
+        "source_type": "ocr_extracted",
+        "metadata": {"topic_hint": "Variables", "section": "Basics"}
+    },
+    {
+        "chunk_id": "thin-chunk-003",
+        "workflow_id": "wf-gold-insuff",
+        "content": "Functions are reusable blocks of code that perform a specific task. They accept parameters and return values, promoting code modularity and reducing duplication.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Functions", "section": "Basics"}
+    }
+]

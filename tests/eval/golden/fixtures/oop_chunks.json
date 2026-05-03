@@ -1,0 +1,156 @@
+[
+    {
+        "chunk_id": "gold-chunk-001",
+        "workflow_id": "wf-gold-001",
+        "content": "Object-Oriented Programming (OOP) is a programming paradigm based on the concept of objects, which contain data in the form of fields (attributes) and code in the form of procedures (methods). OOP models real-world entities as software objects.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "OOP Fundamentals", "section": "Introduction"}
+    },
+    {
+        "chunk_id": "gold-chunk-002",
+        "workflow_id": "wf-gold-001",
+        "content": "Encapsulation is the bundling of data and methods that operate on that data within a single unit or class. It restricts direct access to some of an object's components through access modifiers (public, private, protected).",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Encapsulation", "section": "Core Principles"}
+    },
+    {
+        "chunk_id": "gold-chunk-003",
+        "workflow_id": "wf-gold-001",
+        "content": "Polymorphism allows objects of different classes to be treated as objects of a common superclass. Compile-time polymorphism is achieved through method overloading, while runtime polymorphism uses method overriding with virtual functions.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Polymorphism", "section": "Core Principles"}
+    },
+    {
+        "chunk_id": "gold-chunk-004",
+        "workflow_id": "wf-gold-001",
+        "content": "Inheritance is a mechanism where a new class derives properties and behavior from an existing class. Single inheritance allows one parent, while multiple inheritance (supported in C++ and Python) allows multiple parents.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Inheritance", "section": "Core Principles"}
+    },
+    {
+        "chunk_id": "gold-chunk-005",
+        "workflow_id": "wf-gold-001",
+        "content": "Abstraction is the concept of hiding complex implementation details and showing only the necessary features to the outside world. Abstract classes and interfaces are the primary mechanisms for achieving abstraction in OOP.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Abstraction", "section": "Core Principles"}
+    },
+    {
+        "chunk_id": "gold-chunk-006",
+        "workflow_id": "wf-gold-001",
+        "content": "Design patterns are reusable solutions to commonly occurring problems in software design. The Singleton pattern ensures only one instance of a class exists. The Factory pattern provides an interface for creating objects without specifying concrete classes.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Design Patterns", "section": "Advanced OOP"}
+    },
+    {
+        "chunk_id": "gold-chunk-007",
+        "workflow_id": "wf-gold-001",
+        "content": "The Observer pattern defines a one-to-many dependency between objects so that when one object changes state, all its dependents are notified. The Strategy pattern defines a family of algorithms and makes them interchangeable.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Design Patterns", "section": "Advanced OOP"}
+    },
+    {
+        "chunk_id": "gold-chunk-008",
+        "workflow_id": "wf-gold-001",
+        "content": "SOLID principles guide OOP design: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, and Dependency Inversion. These principles promote maintainable and extensible software architecture.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "SOLID Principles", "section": "Best Practices"}
+    },
+    {
+        "chunk_id": "gold-chunk-009",
+        "workflow_id": "wf-gold-001",
+        "content": "Composition over inheritance suggests that classes should achieve polymorphic behavior and code reuse by containing instances of other classes rather than inheriting from a base class. This reduces coupling between components.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Composition", "section": "Best Practices"}
+    },
+    {
+        "chunk_id": "gold-chunk-010",
+        "workflow_id": "wf-gold-001",
+        "content": "Class diagrams in UML represent the static structure of a system by showing classes, their attributes, methods, and the relationships between them. Association, aggregation, and composition are key relationship types.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "UML", "section": "Modeling"}
+    },
+    {
+        "chunk_id": "gold-chunk-011",
+        "workflow_id": "wf-gold-001",
+        "content": "Exception handling in OOP uses try-catch-finally blocks to manage runtime errors. Custom exception hierarchies allow domain-specific error handling. Checked exceptions (Java) vs unchecked exceptions represent different design philosophies.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Exception Handling", "section": "Error Management"}
+    },
+    {
+        "chunk_id": "gold-chunk-012",
+        "workflow_id": "wf-gold-001",
+        "content": "Generics (Java) and templates (C++) allow classes and methods to operate on parameterized types, providing compile-time type safety while enabling code reuse across different data types without sacrificing performance.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Generics", "section": "Type Systems"}
+    },
+    {
+        "chunk_id": "gold-chunk-013",
+        "workflow_id": "wf-gold-001",
+        "content": "Data structures form the backbone of efficient software. Arrays provide O(1) random access. Linked lists enable O(1) insertions. Hash maps combine O(1) average-case lookup with dynamic resizing via rehashing.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Data Structures", "section": "Fundamentals"}
+    },
+    {
+        "chunk_id": "gold-chunk-014",
+        "workflow_id": "wf-gold-001",
+        "content": "Trees are hierarchical data structures. Binary search trees maintain ordered elements for O(log n) search. AVL trees self-balance to guarantee O(log n) operations. B-trees optimize disk-based storage with high branching factor.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Trees", "section": "Data Structures"}
+    },
+    {
+        "chunk_id": "gold-chunk-015",
+        "workflow_id": "wf-gold-001",
+        "content": "Sorting algorithms have different time and space complexity tradeoffs. Quicksort averages O(n log n) with O(log n) space. Mergesort guarantees O(n log n) but requires O(n) space. Heapsort is in-place with O(n log n) worst case.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Sorting Algorithms", "section": "Algorithms"}
+    },
+    {
+        "chunk_id": "gold-chunk-016",
+        "workflow_id": "wf-gold-001",
+        "content": "Graph algorithms solve connectivity and optimization problems. Dijkstra's algorithm finds shortest paths in weighted graphs. BFS explores level by level for unweighted shortest paths. DFS explores depth-first for cycle detection and topological sorting.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Graph Algorithms", "section": "Algorithms"}
+    },
+    {
+        "chunk_id": "gold-chunk-017",
+        "workflow_id": "wf-gold-001",
+        "content": "Dynamic programming solves problems by breaking them into overlapping subproblems and storing results. The Fibonacci sequence, knapsack problem, and longest common subsequence are classic DP examples with polynomial-time solutions.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Dynamic Programming", "section": "Algorithms"}
+    },
+    {
+        "chunk_id": "gold-chunk-018",
+        "workflow_id": "wf-gold-001",
+        "content": "Concurrency in OOP involves managing multiple threads of execution. Synchronization primitives (mutexes, semaphores) prevent race conditions. The producer-consumer pattern coordinates work between threads using blocking queues.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Concurrency", "section": "Advanced Topics"}
+    },
+    {
+        "chunk_id": "gold-chunk-019",
+        "workflow_id": "wf-gold-001",
+        "content": "Memory management in object-oriented languages varies. Java and C# use garbage collection with generational collectors. C++ uses RAII (Resource Acquisition Is Initialization) and smart pointers for deterministic destruction.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Memory Management", "section": "Advanced Topics"}
+    },
+    {
+        "chunk_id": "gold-chunk-020",
+        "workflow_id": "wf-gold-001",
+        "content": "Unit testing in OOP verifies individual methods and classes in isolation. Mock objects replace real dependencies for focused testing. Test-driven development (TDD) writes tests before implementation to guide design.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Testing", "section": "Quality Assurance"}
+    },
+    {
+        "chunk_id": "gold-chunk-021",
+        "workflow_id": "wf-gold-001",
+        "content": "The Model-View-Controller (MVC) architectural pattern separates an application into three interconnected components. The Model manages data logic, the View handles display, and the Controller processes user input and updates the Model.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "MVC Architecture", "section": "Architecture"}
+    },
+    {
+        "chunk_id": "gold-chunk-022",
+        "workflow_id": "wf-gold-001",
+        "content": "Refactoring is the process of restructuring existing code without changing its external behavior. Common refactorings include Extract Method, Move Method, Rename Variable, and Replace Conditional with Polymorphism.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Refactoring", "section": "Best Practices"}
+    }
+]

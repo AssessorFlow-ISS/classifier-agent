@@ -1,0 +1,58 @@
+[
+    {
+        "chunk_id": "ocr-chunk-001",
+        "workflow_id": "wf-gold-ocr",
+        "content": "Object-Oriented Programming (OOP) is a paradigm based on objects containing data fields and methods. The four pillars are encapsulation, abstraction, inheritance, and polymorphism.",
+        "source_type": "ocr_extracted",
+        "metadata": {"topic_hint": "OOP Overview", "section": "Chapter 1", "ocr_confidence": 0.91}
+    },
+    {
+        "chunk_id": "ocr-chunk-002",
+        "workflow_id": "wf-gold-ocr",
+        "content": "Encapsu1ation bundles data and methods within a class, restricting access via modif1ers. Private members are only accessible within the class itself.",
+        "source_type": "ocr_extracted",
+        "metadata": {"topic_hint": "Encapsulation", "section": "Chapter 2", "ocr_confidence": 0.78}
+    },
+    {
+        "chunk_id": "ocr-chunk-003",
+        "workflow_id": "wf-gold-ocr",
+        "content": "Data structures provide efficient ways to organize data. Arrays offer constant-time random access while linked lists allow constant-time insertions at the head.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Data Structures", "section": "Chapter 3"}
+    },
+    {
+        "chunk_id": "ocr-chunk-004",
+        "workflow_id": "wf-gold-ocr",
+        "content": "lnheritance enables a child c1ass to derive properties from a parent class. This promotes code reuse and establishes an is-a relationship between classes.",
+        "source_type": "ocr_extracted",
+        "metadata": {"topic_hint": "Inheritance", "section": "Chapter 2", "ocr_confidence": 0.72}
+    },
+    {
+        "chunk_id": "ocr-chunk-005",
+        "workflow_id": "wf-gold-ocr",
+        "content": "Polymorphism means many forms. Method overriding allows subclasses to provide specific implementations of methods defined in their parent class.",
+        "source_type": "ocr_extracted",
+        "metadata": {"topic_hint": "Polymorphism", "section": "Chapter 2", "ocr_confidence": 0.88}
+    },
+    {
+        "chunk_id": "ocr-chunk-006",
+        "workflow_id": "wf-gold-ocr",
+        "content": "Software testing is essential for quality assurance. Unit tests validate individual components. Integration tests verify interactions between modules.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Testing", "section": "Chapter 5"}
+    },
+    {
+        "chunk_id": "ocr-chunk-007",
+        "workflow_id": "wf-gold-ocr",
+        "content": "The SOLID principles guide object-oriented design: Single Responsibility, Open-Closed, Liskov Substitution, Interface Segregation, Dependency Inversion.",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "SOLID", "section": "Chapter 4"}
+    },
+    {
+        "chunk_id": "ocr-chunk-008",
+        "workflow_id": "wf-gold-ocr",
+        "content": "Design patterns are proven solutions to common problems. Creational patterns (Singleton, Factory), Structural patterns (Adapter, Decorator), Behavioral patterns (Observer, Strategy).",
+        "source_type": "direct_text",
+        "metadata": {"topic_hint": "Design Patterns", "section": "Chapter 4"}
+    }
+]

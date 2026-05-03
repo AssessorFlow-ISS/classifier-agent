@@ -1,0 +1,32 @@
+{
+    "version": "0.1.0",
+    "created": "2026-03-31",
+    "description": "First live evaluation baseline from gpt-4.1-mini judge on localhost",
+    "regression_threshold": 5.0,
+    "metrics": {
+        "Classification Correctness": {
+            "score": 0.9946,
+            "test_count": 19,
+            "pass_count": 19,
+            "notes": "19/19 passed (threshold 0.7). Avg score 0.9946. Covers sufficient_aligned (4), sufficient_misaligned (4), insufficient_auto (3), insufficient_manual (3), edge_cases (5)"
+        },
+        "Rubric Alignment Quality": {
+            "score": 0.9987,
+            "test_count": 7,
+            "pass_count": 7,
+            "notes": "7/7 passed (threshold 0.7). Avg score 0.9987. Covers sufficient_aligned (3), sufficient_misaligned (4)"
+        },
+        "Topic Extraction Quality": {
+            "score": 0.9687,
+            "test_count": 3,
+            "pass_count": 3,
+            "notes": "3/3 passed (threshold 0.7). Avg score 0.9687. Covers sufficient_aligned cases with has_topics=true"
+        },
+        "Autonomy Decision Correctness": {
+            "score": 1.0000,
+            "test_count": 6,
+            "pass_count": 6,
+            "notes": "6/6 passed (threshold 0.7). Avg score 1.0000. Covers insufficient_auto (3), insufficient_manual (3)"
+        }
+    }
+}

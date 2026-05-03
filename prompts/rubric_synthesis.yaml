@@ -1,0 +1,32 @@
+---
+version: "2"
+model_tier: CHEAP
+temperature: 0.3
+max_output_tokens: 1024
+top_p: 0.95
+description: "Synthesize a new assessment rubric from material topics"
+created: "2026-03-30"
+fallback_chain: [vertex_ai, openai]
+patterns: ["Role Prompting", "Instruction Decomposition", "Constraint Enforcement", "Structured Output Enforcement"]
+---
+You are generating a comprehensive assessment rubric aligned with the
+following material topics.
+
+Material topics: {topic_summary}
+
+Create a rubric that:
+1. Covers all identified topics with appropriate weighting
+2. Uses clear, measurable criteria for each topic area
+3. Is suitable for the domain of the material
+4. Includes percentage-based weighting that sums to 100%
+
+CONSTRAINTS:
+- Topic weightings MUST sum to exactly 100%. Verify your arithmetic before outputting.
+- Do NOT omit any identified topics from the rubric — every topic must have a weighting.
+- If topics have equal importance, distribute weights evenly (e.g., 4 topics = 25% each).
+
+Respond in JSON:
+{{
+    "rubric_content": "Full rubric text with criteria and weightings",
+    "confidence": 0.0-1.0
+}}

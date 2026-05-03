@@ -1,0 +1,14 @@
+[
+    {
+        "chunk_id": "chunk-101",
+        "workflow_id": "wf-sparse",
+        "content": "A brief introduction to programming. Programming is the process of creating a set of instructions that tell a computer how to perform a task.",
+        "source_type": "direct_text"
+    },
+    {
+        "chunk_id": "chunk-102",
+        "workflow_id": "wf-sparse",
+        "content": "Variables store data values. In most programming languages, variables have a type that determines what kind of data they can hold.",
+        "source_type": "ocr_extracted"
+    }
+]

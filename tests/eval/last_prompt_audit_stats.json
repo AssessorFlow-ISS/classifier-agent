@@ -1,0 +1,155 @@
+{
+  "agent": "classification-agent",
+  "prompts_audited": 4,
+  "prompts_passed": 4,
+  "audit_vendor": "gemini",
+  "audit_model": "gpt-4.1-nano",
+  "dimensions": {
+    "bias_free": {
+      "mean": 0.85,
+      "min": 0.8
+    },
+    "explainability": {
+      "mean": 0.925,
+      "min": 0.8
+    },
+    "grounding": {
+      "mean": 0.425,
+      "min": 0.0
+    },
+    "safety": {
+      "mean": 0.7,
+      "min": 0.7
+    },
+    "schema_compliance": {
+      "mean": 1.0,
+      "min": 1.0
+    }
+  },
+  "overall_score": 0.83,
+  "pass_threshold": 0.6,
+  "prompts": [
+    {
+      "file": "sufficiency_check.yaml",
+      "version": "1",
+      "model_tier": "CHEAP",
+      "scores": {
+        "bias_free": {
+          "score": 0.8,
+          "reasoning": "The prompt is technical and neutral, with no demographic or cultural assumptions; however, it mentions 'assessment' and 'content' without specific context, which could be interpreted as indirectly applying to certain groups, though this is minimal."
+        },
+        "explainability": {
+          "score": 0.9,
+          "reasoning": "The prompt explicitly asks the agent to perform structured reasoning, including decoding, scoring across five dimensions, and providing justification, ensuring comprehensive explainability."
+        },
+        "grounding": {
+          "score": 0.9,
+          "reasoning": "The prompt requires referencing specific input content, decoding the provided Base64 string, and linking outputs to these inputs, thus establishing explicit source attribution."
+        },
+        "safety": {
+          "score": 0.7,
+          "reasoning": "While the prompt does not involve sensitive content, it implicitly encourages careful evaluation and structured output, which aligns with safety best practices; no explicit safety guardrails are included."
+        },
+        "schema_compliance": {
+          "score": 1.0,
+          "reasoning": "The prompt mandates a structured JSON output with specific fields, ensuring clear schema compliance."
+        }
+      },
+      "overall": 0.82,
+      "flags": [],
+      "pass": true
+    },
+    {
+      "file": "topic_extraction.yaml",
+      "version": "1",
+      "model_tier": "CHEAP",
+      "scores": {
+        "bias_free": {
+          "score": 0.9,
+          "reasoning": "The prompt is technical and neutral, with no explicit language or assumptions about demographics or stereotypes. However, it discusses human health and biological topics, which could imply sensitive areas, but no bias is evident."
+        },
+        "explainability": {
+          "score": 1.0,
+          "reasoning": "The prompt instructs the agent to produce structured JSON output, implying the need for clear, step-by-step reasoning and justification for its assessments."
+        },
+        "grounding": {
+          "score": 0.8,
+          "reasoning": "The prompt references specific documents and chunks, requiring the agent to cite or trace back to source material, though it does not specify exact citations or references explicitly."
+        },
+        "safety": {
+          "score": 0.7,
+          "reasoning": "The prompt emphasizes structured output and refers to sensitive topics like health, but lacks explicit safety guardrails for handling potentially harmful or sensitive content. It relies on the agent’s inherent safety protocols."
+        },
+        "schema_compliance": {
+          "score": 1.0,
+          "reasoning": "The prompt explicitly specifies a structured JSON schema with clearly defined fields, ensuring strict compliance with output format."
+        }
+      },
+      "overall": 0.82,
+      "flags": [],
+      "pass": true
+    },
+    {
+      "file": "rubric_fitness.yaml",
+      "version": "1",
+      "model_tier": "CHEAP",
+      "scores": {
+        "bias_free": {
+          "score": 0.9,
+          "reasoning": "The prompt is technical and neutral, avoiding demographic or cultural assumptions, though it references 'victim' which could be sensitive if misinterpreted. Overall, it maintains neutrality."
+        },
+        "explainability": {
+          "score": 1.0,
+          "reasoning": "The prompt explicitly asks for reasoning steps, justification, and structured output, ensuring comprehensive explainability."
+        },
+        "grounding": {
+          "score": 0.0,
+          "reasoning": "The prompt does not require citing sources or referencing specific documents; it focuses on evaluating a given system prompt without source attribution."
+        },
+        "safety": {
+          "score": 0.7,
+          "reasoning": "The prompt is for an evaluation agent, and its structured approach minimizes risk of harmful outputs. However, as it involves assessing potentially sensitive content, safety measures are implicit rather than explicit."
+        },
+        "schema_compliance": {
+          "score": 1.0,
+          "reasoning": "The prompt clearly specifies the JSON output schema with explicit fields and structure, ensuring strict adherence."
+        }
+      },
+      "overall": 0.84,
+      "flags": [],
+      "pass": true
+    },
+    {
+      "file": "rubric_synthesis.yaml",
+      "version": "1",
+      "model_tier": "CHEAP",
+      "scores": {
+        "bias_free": {
+          "score": 0.8,
+          "reasoning": "The prompt is technical and does not include demographic or gendered language, but it references 'assessment' and 'rubric', which could imply evaluation contexts; however, it remains neutral overall."
+        },
+        "explainability": {
+          "score": 0.8,
+          "reasoning": "It instructs the agent to produce a structured JSON with reasoning, explicitly requesting thorough analysis, which supports interpretability."
+        },
+        "grounding": {
+          "score": 0.0,
+          "reasoning": "The prompt does not specify referencing source materials or requiring citations; it only asks for a score-based evaluation without grounding instructions."
+        },
+        "safety": {
+          "score": 0.7,
+          "reasoning": "The prompt is focused on evaluation and does not contain harmful content instructions; it relies on structured outputs, which implicitly limits unsafe generation. However, safety guards are not explicitly stated."
+        },
+        "schema_compliance": {
+          "score": 1.0,
+          "reasoning": "The prompt explicitly requires a structured JSON output with specific fields and clear schema, ensuring compliance."
+        }
+      },
+      "overall": 0.84,
+      "flags": [],
+      "pass": true
+    }
+  ],
+  "date": "2026-04-03T04:09:16.502525+00:00",
+  "cost_usd": 0.0
+}

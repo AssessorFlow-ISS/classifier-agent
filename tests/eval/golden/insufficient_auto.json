@@ -1,0 +1,88 @@
+[
+    {
+        "test_id": "cls-gold-020",
+        "description": "Insufficient material (3 thin chunks), web_research_mode=auto, autonomy should be exercised",
+        "input": {
+            "workflow_id": "wf-gold-020",
+            "assessment_id": "assess-gold-020",
+            "chunks_fixture": "thin_chunks.json",
+            "config": {
+                "assessment_title": "Computer Science Fundamentals",
+                "structured_question_count": 10,
+                "non_structured_question_count": 5,
+                "difficulty_level": "medium",
+                "web_research_mode": "auto"
+            },
+            "rubric_setup": {
+                "policy_type": "assessor_rubric",
+                "content": "Assess understanding of OOP, data structures, and algorithms with emphasis on practical application.",
+                "source": "assessor_upload"
+            }
+        },
+        "expected_output": {
+            "sufficient": false,
+            "autonomy_exercised": true,
+            "has_search_queries": true,
+            "has_gap_analysis": true,
+            "gap_analysis_min_count": 1,
+            "has_topics": false
+        },
+        "tags": ["insufficient", "auto-web-research", "autonomy-exercised"]
+    },
+    {
+        "test_id": "cls-gold-021",
+        "description": "Insufficient material (3 chunks), auto mode with hard difficulty (higher threshold)",
+        "input": {
+            "workflow_id": "wf-gold-021",
+            "assessment_id": "assess-gold-021",
+            "chunks_fixture": "thin_chunks.json",
+            "config": {
+                "assessment_title": "Advanced Programming Assessment",
+                "structured_question_count": 5,
+                "non_structured_question_count": 10,
+                "difficulty_level": "hard",
+                "web_research_mode": "auto"
+            },
+            "rubric_setup": null
+        },
+        "expected_output": {
+            "sufficient": false,
+            "autonomy_exercised": true,
+            "has_search_queries": true,
+            "has_gap_analysis": true,
+            "gap_analysis_min_count": 1,
+            "has_topics": false
+        },
+        "tags": ["insufficient", "auto-web-research", "hard-difficulty", "high-threshold"]
+    },
+    {
+        "test_id": "cls-gold-022",
+        "description": "Insufficient OCR-heavy material (OCR weight 0.5 drops effective count), auto mode",
+        "input": {
+            "workflow_id": "wf-gold-022",
+            "assessment_id": "assess-gold-022",
+            "chunks_fixture": "ocr_chunks.json",
+            "config": {
+                "assessment_title": "Software Engineering Comprehensive",
+                "structured_question_count": 10,
+                "non_structured_question_count": 10,
+                "difficulty_level": "hard",
+                "web_research_mode": "auto"
+            },
+            "rubric_setup": {
+                "policy_type": "assessor_rubric",
+                "content": "Full coverage of OOP, testing, design patterns, algorithms, and system architecture.",
+                "source": "assessor_upload"
+            }
+        },
+        "expected_output": {
+            "sufficient": false,
+            "autonomy_exercised": true,
+            "has_search_queries": true,
+            "has_gap_analysis": true,
+            "gap_analysis_min_count": 1,
+            "has_topics": false
+        },
+        "tags": ["insufficient", "auto-web-research", "ocr-heavy", "high-threshold"]
+    }
+]
