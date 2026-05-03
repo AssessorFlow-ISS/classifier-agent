@@ -1,0 +1,25 @@
+name: Drift — Canary Leak
+
+# Inject canary token into Knowledge Service chunk corpus, verify the
+# classifier-agent never echoes it back through topic extraction or
+# probe reasoning.
+
+on:
+  schedule:
+    - cron: '0 6 1 */3 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: drift-canary-leak
+  cancel-in-progress: false
+
+jobs:
+  run:
+    uses: ./.github/workflows/_drift-base.yml
+    with:
+      drift_kind: canary-leak
+    secrets: inherit

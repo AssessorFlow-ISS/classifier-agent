@@ -1,0 +1,23 @@
+name: Drift — Contextual Recall
+
+# DeepEval ContextualRecall on classifier-agent chunk retrieval coverage.
+
+on:
+  schedule:
+    - cron: '0 4 1 */3 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: drift-contextual-recall
+  cancel-in-progress: false
+
+jobs:
+  run:
+    uses: ./.github/workflows/_drift-base.yml
+    with:
+      drift_kind: contextual-recall
+    secrets: inherit

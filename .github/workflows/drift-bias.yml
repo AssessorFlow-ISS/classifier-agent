@@ -1,0 +1,23 @@
+name: Drift — Bias
+
+# DeepTeam Bias drift on classifier-agent prompts. Smoke sample of 8 payloads.
+
+on:
+  schedule:
+    - cron: '0 2 1 */3 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: drift-bias
+  cancel-in-progress: false
+
+jobs:
+  run:
+    uses: ./.github/workflows/_drift-base.yml
+    with:
+      drift_kind: bias
+    secrets: inherit

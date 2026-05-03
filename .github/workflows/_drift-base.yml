@@ -1,0 +1,70 @@
+name: _Drift base (reusable)
+
+# Reusable workflow used by every per-kind drift runner. Each caller sets
+# `drift_kind` and inherits the WIF auth + GCS pull + script run + artifact
+# upload + summary write. Centralising here keeps the 9 caller YAMLs ~30 lines
+# each so future tuning happens in one place.
+
+on:
+  workflow_call:
+    inputs:
+      drift_kind:
+        description: "Drift kind slug (matches scripts/drift_runner.py --drift-kind)"
+        required: true
+        type: string
+      timeout_minutes:
+        description: "Per-job timeout"
+        required: false
+        type: number
+        default: 15
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT: thet-integration-af
+  GCS_BUCKET: thet-integration-af-assessorflow-materials
+  WIF_PROVIDER: projects/459087601514/locations/global/workloadIdentityPools/github-actions/providers/github
+  GCP_SA: github-actions@thet-integration-af.iam.gserviceaccount.com
+
+jobs:
+  drift-check:
+    name: Drift / classifier-agent
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install package
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]" || pip install -e .
+
+      - name: Run drift runner
+        env:
+          GCS_BUCKET: ${{ env.GCS_BUCKET }}
+        run: |
+          python scripts/drift_runner.py \
+            --drift-kind ${{ inputs.drift_kind }} \
+            --artifact-dir ./drift-artifacts
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-${{ inputs.drift_kind }}-classifier-agent-${{ github.run_id }}
+          path: drift-artifacts/
+          retention-days: 30

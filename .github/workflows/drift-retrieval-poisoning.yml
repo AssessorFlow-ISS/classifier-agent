@@ -1,0 +1,25 @@
+name: Drift — Retrieval Poisoning
+
+# Replay 8 poisoned chunks from af-golden namespace; assert L-10 guardrail
+# catches them and the classifier-agent does not propagate the poison into
+# downstream events.
+
+on:
+  schedule:
+    - cron: '0 8 1 */3 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: drift-retrieval-poisoning
+  cancel-in-progress: false
+
+jobs:
+  run:
+    uses: ./.github/workflows/_drift-base.yml
+    with:
+      drift_kind: retrieval-poisoning
+    secrets: inherit

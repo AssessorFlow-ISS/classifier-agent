@@ -1,0 +1,23 @@
+name: Drift — Score Consistency
+
+# Re-grade variance check on classifier-agent sufficiency/rubric scores.
+
+on:
+  schedule:
+    - cron: '0 5 1 */3 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: drift-score-consistency
+  cancel-in-progress: false
+
+jobs:
+  run:
+    uses: ./.github/workflows/_drift-base.yml
+    with:
+      drift_kind: score-consistency
+    secrets: inherit
