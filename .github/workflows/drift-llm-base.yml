@@ -8,6 +8,10 @@ on:
     - cron: '0 7 1 */3 *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 concurrency:
   group: drift-llm-base
   cancel-in-progress: false

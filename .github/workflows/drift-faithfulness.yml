@@ -9,6 +9,10 @@ on:
     - cron: '0 0 1 */3 *'   # quarterly, 00:00 UTC
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 concurrency:
   group: drift-faithfulness
   cancel-in-progress: false
