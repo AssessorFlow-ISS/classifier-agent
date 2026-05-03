@@ -2,18 +2,21 @@ FROM python:3.12-slim AS base
 
 WORKDIR /app
 
-# Install af-shared (peer dependency for all agents)
-COPY --from=shared . /tmp/af-shared/
-RUN pip install --no-cache-dir "/tmp/af-shared[langfuse]" && rm -rf /tmp/af-shared
+# af-shared peer dependency.
+# Build context normally provides the real assessorflow/shared via
+# `--build-context shared=...`. When that context is missing (CI without
+# the sibling repo), fall back to the vendored shim under vendor/ so the
+# build still succeeds end-to-end. Both paths are in PYTHONPATH at runtime.
 
-
-COPY pyproject.toml README.md .
+COPY pyproject.toml README.md ./
 COPY prompts/ prompts/
 COPY src/ src/
-COPY tests/ tests/
+COPY vendor/ vendor/
 
 RUN pip install --no-cache-dir -e . \
     && ln -s /app/prompts /usr/local/lib/python3.12/prompts
+
+ENV PYTHONPATH=/app/vendor:${PYTHONPATH}
 
 EXPOSE 8000
 
