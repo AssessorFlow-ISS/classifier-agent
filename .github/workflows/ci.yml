@@ -357,17 +357,14 @@ jobs:
           pip install -e ".[dev]"
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
 
-      - name: Start app on :8000 (stub adapters, all in-process)
-        env:
-          KNOWLEDGE_SERVICE_ADAPTER: stub
-          MODEL_BROKER_ADAPTER: stub
-          ASSESSMENT_CONFIG_ADAPTER: stub
-          EVENT_PUBLISHER_ADAPTER: stub
-          AUDIT_ADAPTER: stub
+      - name: Start DAST target app on :8000
+        # scripts/dast_target_app.py is a minimal FastAPI mirror of the
+        # classifier's HTTP surface (/health, /ready, /invoke). Avoids the
+        # main app's deep af_shared.adapters dependencies which aren't in
+        # the vendored shim. ZAP spider only needs the routes to exist.
         run: |
-          nohup uvicorn classification_agent.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
+          nohup uvicorn scripts.dast_target_app:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
           echo $! > /tmp/app.pid
-          # Probe readiness — try /health then /ready, accept 200 OR 404 (server is up)
           for i in $(seq 1 20); do
             if curl -sS -o /dev/null -w '%{http_code}' http://localhost:8000/ 2>/dev/null | grep -qE '200|404|405'; then
               echo "app responding after ${i}s"
@@ -377,7 +374,7 @@ jobs:
           done
           echo "--- app log tail ---"
           tail -50 /tmp/app.log || true
-          curl -sS http://localhost:8000/ -o /dev/null -w 'final probe: %{http_code}\n' || echo "final probe failed"
+          curl -sS http://localhost:8000/health -o /dev/null -w 'health probe: %{http_code}\n' || echo "health probe failed"
 
       - name: ZAP baseline scan
         uses: zaproxy/action-baseline@v0.13.0
