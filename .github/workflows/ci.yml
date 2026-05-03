@@ -35,6 +35,12 @@ env:
   GCP_SA: github-actions@thet-integration-af.iam.gserviceaccount.com
   CLUSTER: af-smoke-cluster
   CLUSTER_LOCATION: asia-southeast1-b
+  # Deploy / hand-off targets (used only on main pushes)
+  AR_REGISTRY: asia-southeast1-docker.pkg.dev
+  AR_REPO: assessorflow
+  IMAGE_NAME: classifier-agent
+  CLOUD_DEPLOY_PIPELINE: classifier-agent
+  CLOUD_DEPLOY_REGION: asia-southeast1
 
 jobs:
   # ──────────────────────────────────────────────────────────────────
@@ -377,6 +383,8 @@ jobs:
       - llm-adversarial
       - build-container
     if: always()
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Render summary
@@ -401,4 +409,113 @@ jobs:
             echo ""
             echo "Commit: \`${{ github.sha }}\`"
             echo "Triggered: ${{ github.event_name }} on \`${{ github.ref_name }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ──────────────────────────────────────────────────────────────────
+  # Stage 5: main-only — build, push to GAR, hand off to Cloud Deploy
+  # Skipped on feat/** and PR runs (still appear in the graph as skipped)
+  # ──────────────────────────────────────────────────────────────────
+  build-push-to-gar:
+    name: "Build + push to Artifact Registry"
+    needs:
+      - unit-tests
+      - integration-tests
+      - llm-quality-deepeval
+      - llm-adversarial
+      - build-container
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_uri: ${{ steps.image.outputs.uri }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+          token_format: access_token
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker ${{ env.AR_REGISTRY }} --quiet
+
+      - id: image
+        name: Compute image URI
+        run: |
+          short_sha="${GITHUB_SHA:0:7}"
+          uri="${{ env.AR_REGISTRY }}/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}"
+          echo "uri=${uri}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+      - name: "Build + push (multi-tag SHA / short SHA / main)"
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.uri }}:${{ github.sha }}
+            ${{ steps.image.outputs.uri }}:${{ steps.image.outputs.short_sha }}
+            ${{ steps.image.outputs.uri }}:main
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  handoff-to-cloud-deploy:
+    name: "Hand-off to Cloud Deploy"
+    needs: [build-push-to-gar]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - id: release
+        name: Compute release name
+        run: |
+          short_sha="${GITHUB_SHA:0:7}"
+          name="rel-${short_sha}-$(date -u +%Y%m%d%H%M)"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Cloud Deploy (advisory — soft-fail if pipeline absent)
+        run: |
+          if gcloud deploy delivery-pipelines describe ${{ env.CLOUD_DEPLOY_PIPELINE }} \
+                --project=${{ env.GCP_PROJECT }} \
+                --region=${{ env.CLOUD_DEPLOY_REGION }} > /dev/null 2>&1; then
+            gcloud deploy releases create ${{ steps.release.outputs.name }} \
+              --project=${{ env.GCP_PROJECT }} \
+              --region=${{ env.CLOUD_DEPLOY_REGION }} \
+              --delivery-pipeline=${{ env.CLOUD_DEPLOY_PIPELINE }} \
+              --images=classifier-agent=${{ needs.build-push-to-gar.outputs.image_uri }}:${{ github.sha }} \
+              --annotations="git_sha=${{ github.sha }},triggered_by=${{ github.actor }},workflow_run=${{ github.run_id }}"
+            echo "PIPELINE_STATUS=created" >> "$GITHUB_ENV"
+          else
+            echo "::notice::Cloud Deploy pipeline '${{ env.CLOUD_DEPLOY_PIPELINE }}' not provisioned in ${{ env.CLOUD_DEPLOY_REGION }}; image is in GAR ready for the pipeline once it lands"
+            echo "PIPELINE_STATUS=skipped" >> "$GITHUB_ENV"
+          fi
+
+      - name: Render hand-off summary
+        run: |
+          {
+            echo "## Hand-off to Cloud Deploy"
+            echo ""
+            echo "GitHub Actions has finished. Cloud Deploy now owns the rollout."
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Image (in GAR) | \`${{ needs.build-push-to-gar.outputs.image_uri }}:${{ github.sha }}\` |"
+            echo "| Release name | \`${{ steps.release.outputs.name }}\` |"
+            echo "| Cloud Deploy pipeline | \`${{ env.CLOUD_DEPLOY_PIPELINE }}\` (region: \`${{ env.CLOUD_DEPLOY_REGION }}\`) |"
+            echo "| Pipeline call | \`${PIPELINE_STATUS}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
