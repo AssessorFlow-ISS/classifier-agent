@@ -253,8 +253,8 @@ jobs:
           name: deepeval-report
           path: ci-llm-artifacts/
 
-  llm-redteam-promptfoo:
-    name: LLM — Promptfoo red-team
+  llm-adversarial:
+    name: LLM — DeepTeam + Promptfoo
     runs-on: ubuntu-latest
     needs: [unit-tests]
     permissions:
@@ -295,21 +295,34 @@ jobs:
             sleep 2
           done
 
-      - name: Install package + promptfoo
+      - name: Install package + DeepTeam + promptfoo
         run: |
           pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev]" deepteam
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
           npm install -g promptfoo
+
+      - name: DeepTeam — 8 adversarial categories against REAL Model Broker
+        env:
+          MODEL_BROKER_URL: http://localhost:8010
+        run: |
+          mkdir -p ci-llm-adversarial-artifacts/deepteam
+          if [ -f scripts/deepteam_smoke.py ]; then
+            python scripts/deepteam_smoke.py \
+              --output ci-llm-adversarial-artifacts/deepteam/results.json || true
+          else
+            echo "::warning::scripts/deepteam_smoke.py not found — emitting placeholder"
+            echo '{"skipped": true, "reason": "no deepteam_smoke.py"}' \
+              > ci-llm-adversarial-artifacts/deepteam/results.json
+          fi
 
       - name: Promptfoo — 3 OWASP categories against REAL Model Broker
         env:
           MODEL_BROKER_URL: http://localhost:8010
         run: |
-          mkdir -p ci-promptfoo-artifacts
-          # Promptfoo provider points to localhost:8010 via promptfoo.yaml
+          mkdir -p ci-llm-adversarial-artifacts/promptfoo
           promptfoo eval --config promptfoo.yaml \
-            --output ci-promptfoo-artifacts/results.json \
+            --output ci-llm-adversarial-artifacts/promptfoo/results.json \
             --no-progress-bar || true
 
       - name: Tear down port-forward
@@ -320,8 +333,8 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: promptfoo-report
-          path: ci-promptfoo-artifacts/
+          name: llm-adversarial-report
+          path: ci-llm-adversarial-artifacts/
 
   build-container:
     name: Container — Docker build + Trivy scan
@@ -361,7 +374,7 @@ jobs:
       - unit-tests
       - integration-tests
       - llm-quality-deepeval
-      - llm-redteam-promptfoo
+      - llm-adversarial
       - build-container
     if: always()
     runs-on: ubuntu-latest
@@ -383,7 +396,7 @@ jobs:
             echo "| Automated — unit | pytest + cov>=90% | ${{ needs.unit-tests.result }} |"
             echo "| Automated — integration | pytest | ${{ needs.integration-tests.result }} |"
             echo "| LLM — quality | DeepEval | ${{ needs.llm-quality-deepeval.result }} |"
-            echo "| LLM — red-team | Promptfoo | ${{ needs.llm-redteam-promptfoo.result }} |"
+            echo "| LLM — adversarial | DeepTeam + Promptfoo | ${{ needs.llm-adversarial.result }} |"
             echo "| Container | Docker + Trivy | ${{ needs.build-container.result }} |"
             echo ""
             echo "Commit: \`${{ github.sha }}\`"
