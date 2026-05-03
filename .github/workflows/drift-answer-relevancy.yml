@@ -1,0 +1,19 @@
+name: Drift — Answer Relevancy
+
+# DeepEval AnswerRelevancy drift on classifier-agent topic synthesis quality.
+
+on:
+  schedule:
+    - cron: '0 1 1 */3 *'
+  workflow_dispatch:
+
+concurrency:
+  group: drift-answer-relevancy
+  cancel-in-progress: false
+
+jobs:
+  run:
+    uses: ./.github/workflows/_drift-base.yml
+    with:
+      drift_kind: answer-relevancy
+    secrets: inherit
