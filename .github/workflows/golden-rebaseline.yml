@@ -8,7 +8,7 @@ name: Golden — Rebaseline
 
 on:
   schedule:
-    - cron: '0 21 * * 0'   # weekly Mon 05:00 SGT (Sun 21:00 UTC)
+    - cron: '0 6 * * 1'   # weekly Mon 14:00 SGT (06:00 UTC) — after last drift (drift-retrieval-poisoning at Mon 13:00 SGT)
   workflow_dispatch:
     inputs:
       scenario:
