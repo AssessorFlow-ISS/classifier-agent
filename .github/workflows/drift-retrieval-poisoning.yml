@@ -6,7 +6,7 @@ name: Drift — Retrieval Poisoning
 
 on:
   schedule:
-    - cron: '0 8 1 */3 *'
+    - cron: '0 5 * * 1'   # weekly Mon 13:00 SGT (Mon 05:00 UTC)
   workflow_dispatch:
 
 permissions:

@@ -4,7 +4,7 @@ name: Drift — Bias
 
 on:
   schedule:
-    - cron: '0 2 1 */3 *'
+    - cron: '0 23 * * 0'   # weekly Mon 07:00 SGT (Sun 23:00 UTC)
   workflow_dispatch:
 
 permissions:
