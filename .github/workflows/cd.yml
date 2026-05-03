@@ -22,6 +22,7 @@ on:
 permissions:
   contents: read
   id-token: write   # WIF for Artifact Registry + Cloud Deploy
+  checks: read       # lewagon/wait-on-check-action queries the check-runs API
 
 concurrency:
   group: cd-classifier-agent
