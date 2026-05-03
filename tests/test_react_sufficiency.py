@@ -446,7 +446,7 @@ class TestReActAutonomyReasoning:
 
         prober = _build_prober(mb, ks)
 
-        assert prober.prompt_version.startswith("classification-agent/")
+        assert prober.prompt_version.startswith("classifier-agent/")
         assert "@v" in prober.prompt_version
         assert "@v5" in prober.prompt_version
 

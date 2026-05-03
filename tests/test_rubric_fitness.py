@@ -254,7 +254,7 @@ class TestRubricFitnessAssessor:
             knowledge_service=ks,
         )
 
-        assert assessor.prompt_version.startswith("classification-agent/")
+        assert assessor.prompt_version.startswith("classifier-agent/")
         assert "@v" in assessor.prompt_version
 
     async def test_aligned_rubric_returns_use_as_is(self) -> None:

@@ -125,7 +125,8 @@ class TestTopicExtractor:
         topic_extractor: TopicExtractor,
     ) -> None:
         """Prompt version follows ADR-39 format."""
-        assert topic_extractor.prompt_version == "classification-agent/topic_extraction@v1"
+        # repo name = classifier-agent (renamed from classification-agent)
+        assert topic_extractor.prompt_version == "classifier-agent/topic_extraction@v1"
 
     async def test_custom_model_broker_response(
         self,
