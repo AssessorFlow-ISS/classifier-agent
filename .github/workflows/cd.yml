@@ -126,10 +126,12 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ──────────────────────────────────────────────────────────────────
-  # Cloud Deploy release: GAR image → dev → smoke → prod
+  # Hand-off card: image is in GAR; Cloud Deploy takes over from here
+  # GitHub Actions' job ends; promotion through dev → smoke → prod is
+  # owned by the Cloud Deploy delivery pipeline (out-of-band).
   # ──────────────────────────────────────────────────────────────────
-  cloud-deploy-release:
-    name: Cloud Deploy release
+  handoff-to-cloud-deploy:
+    name: Hand-off to Cloud Deploy
     needs: [build-push]
     runs-on: ubuntu-latest
     steps:
@@ -154,25 +156,37 @@ jobs:
           fi
           echo "name=${name}" >> "$GITHUB_OUTPUT"
 
-      - name: Create Cloud Deploy release
+      - name: Notify Cloud Deploy (advisory — soft-fail if pipeline absent)
         run: |
-          gcloud deploy releases create ${{ steps.release.outputs.name }} \
-            --project=${{ env.GCP_PROJECT }} \
-            --region=${{ env.CLOUD_DEPLOY_REGION }} \
-            --delivery-pipeline=${{ env.CLOUD_DEPLOY_PIPELINE }} \
-            --images=classifier-agent=${{ needs.build-push.outputs.image_uri }}:${{ github.sha }} \
-            --annotations="git_sha=${{ github.sha }},triggered_by=${{ github.actor }},workflow_run=${{ github.run_id }}" \
-            || echo "::warning::Cloud Deploy pipeline not yet provisioned — image is in GAR; provision the pipeline to enable promotion"
+          if gcloud deploy delivery-pipelines describe ${{ env.CLOUD_DEPLOY_PIPELINE }} \
+                --project=${{ env.GCP_PROJECT }} \
+                --region=${{ env.CLOUD_DEPLOY_REGION }} > /dev/null 2>&1; then
+            gcloud deploy releases create ${{ steps.release.outputs.name }} \
+              --project=${{ env.GCP_PROJECT }} \
+              --region=${{ env.CLOUD_DEPLOY_REGION }} \
+              --delivery-pipeline=${{ env.CLOUD_DEPLOY_PIPELINE }} \
+              --images=classifier-agent=${{ needs.build-push.outputs.image_uri }}:${{ github.sha }} \
+              --annotations="git_sha=${{ github.sha }},triggered_by=${{ github.actor }},workflow_run=${{ github.run_id }}"
+            echo "PIPELINE_STATUS=created" >> "$GITHUB_ENV"
+          else
+            echo "::notice::Cloud Deploy pipeline '${{ env.CLOUD_DEPLOY_PIPELINE }}' not provisioned in ${{ env.CLOUD_DEPLOY_REGION }}; image is in GAR ready for the pipeline once it lands"
+            echo "PIPELINE_STATUS=skipped" >> "$GITHUB_ENV"
+          fi
 
-      - name: Render summary
+      - name: Render hand-off summary
         run: |
           {
-            echo "## Cloud Deploy release"
+            echo "## Hand-off to Cloud Deploy"
             echo ""
-            echo "**Release:** \`${{ steps.release.outputs.name }}\`"
-            echo "**Pipeline:** \`${{ env.CLOUD_DEPLOY_PIPELINE }}\` in \`${{ env.CLOUD_DEPLOY_REGION }}\`"
-            echo "**Image:** \`${{ needs.build-push.outputs.image_uri }}:${{ github.sha }}\`"
+            echo "GitHub Actions has finished. Cloud Deploy now owns the rollout."
             echo ""
-            echo "Promotion through dev → smoke → prod is handled by the Cloud Deploy"
-            echo "delivery pipeline. Rollback: \`gcloud deploy rollouts rollback ...\`."
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Image (in GAR) | \`${{ needs.build-push.outputs.image_uri }}:${{ github.sha }}\` |"
+            echo "| Release name | \`${{ steps.release.outputs.name }}\` |"
+            echo "| Cloud Deploy pipeline | \`${{ env.CLOUD_DEPLOY_PIPELINE }}\` (region: \`${{ env.CLOUD_DEPLOY_REGION }}\`) |"
+            echo "| Pipeline call | \`${PIPELINE_STATUS}\` |"
+            echo ""
+            echo "Promotion through dev → smoke → prod is handled by Cloud Deploy"
+            echo "out-of-band. Rollback: \`gcloud deploy rollouts rollback …\`."
           } >> "$GITHUB_STEP_SUMMARY"
