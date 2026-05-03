@@ -113,7 +113,7 @@ def main() -> int:
     body = "\n".join([
         "## DeepTeam — adversarial smoke",
         "",
-        f"**Agent:** `classifier-agent`  ",
+        "**Agent:** `classifier-agent`  ",
         f"**Categories:** {summary['categories_total']} (smoke; 1 payload per category, no jailbreak)  ",
         f"**Pass:** {summary['categories_passed']}/{summary['categories_total']}  ",
         f"**Duration:** {summary['duration_seconds']}s  ",
