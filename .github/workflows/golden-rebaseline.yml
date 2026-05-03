@@ -30,6 +30,8 @@ env:
   GCS_BUCKET: thet-integration-af-assessorflow-materials
   WIF_PROVIDER: projects/459087601514/locations/global/workloadIdentityPools/github-actions/providers/github
   GCP_SA: github-actions@thet-integration-af.iam.gserviceaccount.com
+  CLUSTER: af-smoke-cluster
+  CLUSTER_LOCATION: asia-southeast1-b
 
 jobs:
   rebaseline:
@@ -51,17 +53,51 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.CLUSTER }}
+          location: ${{ env.CLUSTER_LOCATION }}
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Port-forward Model Broker + Knowledge Service
+        run: |
+          kubectl port-forward -n af-platform svc/model-broker 8010:8000 > /tmp/pf-mb.log 2>&1 &
+          echo $! > /tmp/pf-mb.pid
+          kubectl port-forward -n af-platform svc/knowledge-service 8020:8020 > /tmp/pf-ks.log 2>&1 &
+          echo $! > /tmp/pf-ks.pid
+          for i in 1 2 3 4 5; do
+            if curl -sf http://localhost:8010/health > /dev/null 2>&1 && \
+               curl -sf http://localhost:8020/health > /dev/null 2>&1; then
+              echo "port-forwards ready"
+              break
+            fi
+            sleep 2
+          done
+
       - name: Install package
         run: |
           pip install --upgrade pip
           pip install -e ".[dev]" || pip install -e .
 
-      - name: Re-baseline
+      - name: Re-baseline (real af-platform Model Broker + KS)
         env:
           SCENARIO: ${{ inputs.scenario || 'sufficient' }}
           GCS_BUCKET: ${{ env.GCS_BUCKET }}
+          KNOWLEDGE_SERVICE_ADAPTER: http
+          MODEL_BROKER_ADAPTER: http
+          KS_URL: http://localhost:8020
+          MODEL_BROKER_URL: http://localhost:8010
         run: |
           python scripts/golden_rebaseline.py
+
+      - name: Tear down port-forwards
+        if: always()
+        run: |
+          [ -f /tmp/pf-mb.pid ] && kill "$(cat /tmp/pf-mb.pid)" 2>/dev/null || true
+          [ -f /tmp/pf-ks.pid ] && kill "$(cat /tmp/pf-ks.pid)" 2>/dev/null || true
 
       - name: Upload new baseline artifact
         if: always()

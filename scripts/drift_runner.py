@@ -71,18 +71,53 @@ def _classify(value: float) -> str:
     return "❌ fail"
 
 
+def _build_adapters():
+    """Adapter factory honoring config-driven swap (ADR-42).
+
+    When KNOWLEDGE_SERVICE_ADAPTER=http and MODEL_BROKER_ADAPTER=http (set by
+    _drift-base.yml after kubectl port-forward), this hits the af-platform
+    cluster services through localhost. Otherwise returns in-process stubs.
+    """
+    ks_mode = os.environ.get("KNOWLEDGE_SERVICE_ADAPTER", "stub")
+    mb_mode = os.environ.get("MODEL_BROKER_ADAPTER", "stub")
+
+    if ks_mode == "http":
+        from classification_agent.adapters.knowledge_service_http import (
+            KnowledgeServiceHttpAdapter,
+        )
+        knowledge_service = KnowledgeServiceHttpAdapter()
+    else:
+        from classification_agent.adapters.knowledge_service_stub import (
+            StubKnowledgeServiceAdapter,
+        )
+        knowledge_service = StubKnowledgeServiceAdapter()
+
+    if mb_mode == "http":
+        from classification_agent.adapters.model_broker_http import (
+            ModelBrokerHttpAdapter,
+        )
+        model_broker = ModelBrokerHttpAdapter()
+    else:
+        from classification_agent.adapters.model_broker_stub import (
+            StubModelBrokerAdapter,
+        )
+        model_broker = StubModelBrokerAdapter()
+
+    return knowledge_service, model_broker
+
+
 def _run_quality_drift(drift_kind: str) -> dict[str, float]:
     """Run a DeepEval quality metric against one golden case.
 
     Smoke variant: pulls one golden test fixture from tests/eval/golden/,
-    runs the classifier locally with stub model broker (Phase 5 swaps to
-    cluster-deployed real broker), scores the output via DeepEval.
+    runs the classifier with whichever adapters config selects (stubs by
+    default, real af-platform services when KNOWLEDGE_SERVICE_ADAPTER=http
+    and MODEL_BROKER_ADAPTER=http via kubectl port-forward), scores the
+    output via DeepEval.
     """
     from classification_agent.adapters.assessment_config_stub import StubAssessmentConfigAdapter
     from classification_agent.adapters.decision_audit_stub import StubDecisionAuditAdapter
     from classification_agent.adapters.event_publisher_stub import StubEventPublisherAdapter
-    from classification_agent.adapters.knowledge_service_stub import StubKnowledgeServiceAdapter
-    from classification_agent.adapters.model_broker_stub import StubModelBrokerAdapter
     from classification_agent.api.schemas import (
         ClassificationRequest,
         ClassificationType,
@@ -92,8 +127,7 @@ def _run_quality_drift(drift_kind: str) -> dict[str, float]:
     from classification_agent.tools.registry import build_react_prober_factory
     import asyncio
 
-    knowledge_service = StubKnowledgeServiceAdapter()
-    model_broker = StubModelBrokerAdapter()
+    knowledge_service, model_broker = _build_adapters()
     service = ClassificationService(
         knowledge_service=knowledge_service,
         assessment_config=StubAssessmentConfigAdapter(),
