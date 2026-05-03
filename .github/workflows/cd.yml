@@ -90,7 +90,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build + push (multi-tag: SHA + short SHA + main)
+      - name: "Build + push (multi-tag SHA / short SHA / main)"
         uses: docker/build-push-action@v5
         with:
           context: .
