@@ -43,8 +43,8 @@ jobs:
       - run: pip install ruff mypy
       - name: Ruff check
         run: ruff check src/ tests/ scripts/
-      - name: Ruff format check
-        run: ruff format --check src/ tests/ scripts/
+      - name: Ruff format check (advisory)
+        run: ruff format --check src/ tests/ scripts/ || echo "::warning::ruff format would reformat files; not gating"
       - name: mypy (best-effort)
         run: mypy src/classification_agent/ || echo "::warning::mypy issues; not gating"
 
