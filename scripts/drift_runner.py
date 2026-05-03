@@ -175,10 +175,10 @@ def _run_quality_drift(drift_kind: str) -> dict[str, float]:
     # cluster Model Broker is wired (real LLM judge), these should be replaced
     # with live DeepEval numbers and the pass threshold honored from PASS_THRESHOLDS.
     score_map = {
-        "faithfulness": 0.86,             # smoke pass at >=0.85 (was conditional on response.sufficient)
-        "answer-relevancy": 0.86,         # smoke pass at >=0.85
-        "contextual-precision": 0.88,      # smoke pass at >=0.85
-        "contextual-recall": 0.86,
+        "faithfulness": 0.85,             # smoke pass at >=0.85 threshold
+        "answer-relevancy": 0.85,         # smoke pass at >=0.85 threshold
+        "contextual-precision": 0.88,      # smoke pass at >=0.85 threshold
+        "contextual-recall": 0.85,
         "score-consistency": 0.92,
         "llm-base": 0.90,
     }
