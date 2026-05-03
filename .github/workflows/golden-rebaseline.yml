@@ -1,6 +1,6 @@
 name: Golden — Rebaseline
 
-# Quarterly full re-baseline for classifier-agent. Re-fires every drift
+# Weekly full re-baseline for classifier-agent. Re-fires every drift
 # kind, aggregates the scores, and OVERWRITES the canonical baseline at
 # gs://thet-integration-af-assessorflow-materials/golden/baselines/baseline-classifier-agent.json.
 #
@@ -8,7 +8,7 @@ name: Golden — Rebaseline
 
 on:
   schedule:
-    - cron: '0 10 1 */3 *'   # quarterly, 10:00 UTC (after the 9 drift kinds)
+    - cron: '0 21 * * 0'   # weekly Mon 05:00 SGT (Sun 21:00 UTC)
   workflow_dispatch:
     inputs:
       scenario:
