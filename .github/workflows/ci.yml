@@ -342,6 +342,54 @@ jobs:
           name: llm-adversarial-report
           path: ci-llm-adversarial-artifacts/
 
+  dast:
+    name: Security — DAST (ZAP baseline)
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: "Build runtime image for DAST"
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: classifier-agent:dast
+      - name: Start app container
+        run: |
+          docker run -d --name classifier --rm -p 8000:8000 \
+            -e KNOWLEDGE_SERVICE_ADAPTER=stub \
+            -e MODEL_BROKER_ADAPTER=stub \
+            -e ASSESSMENT_CONFIG_ADAPTER=stub \
+            -e EVENT_PUBLISHER_ADAPTER=stub \
+            classifier-agent:dast
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf http://localhost:8000/ready > /dev/null 2>&1 || \
+               curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "app responding"; break
+            fi
+            sleep 3
+          done
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.13.0
+        with:
+          target: 'http://localhost:8000'
+          cmd_options: '-a -j -m 5 -T 5'
+          allow_issue_writing: false
+          fail_action: false
+      - name: Stop app container
+        if: always()
+        run: docker stop classifier || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-report
+          path: |
+            report_html.html
+            report_json.json
+            report_md.md
+
   build-container:
     name: Container — Docker build + Trivy scan
     runs-on: ubuntu-latest
@@ -381,6 +429,7 @@ jobs:
       - integration-tests
       - llm-quality-deepeval
       - llm-adversarial
+      - dast
       - build-container
     if: always()
     permissions:
@@ -405,6 +454,7 @@ jobs:
             echo "| Automated — integration | pytest | ${{ needs.integration-tests.result }} |"
             echo "| LLM — quality | DeepEval | ${{ needs.llm-quality-deepeval.result }} |"
             echo "| LLM — adversarial | DeepTeam + Promptfoo | ${{ needs.llm-adversarial.result }} |"
+            echo "| Security — DAST | ZAP baseline | ${{ needs.dast.result }} |"
             echo "| Container | Docker + Trivy | ${{ needs.build-container.result }} |"
             echo ""
             echo "Commit: \`${{ github.sha }}\`"
@@ -422,6 +472,7 @@ jobs:
       - integration-tests
       - llm-quality-deepeval
       - llm-adversarial
+      - dast
       - build-container
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
