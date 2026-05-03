@@ -79,6 +79,9 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -e ".[dev]" || pip install -e .
+          # Add vendored af_shared shim to import path (until proper PAT-based
+          # install of assessorflow/shared is wired up — see vendor/af_shared/)
+          echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
 
       - name: Run drift runner (real af-platform Model Broker + KS)
         env:
