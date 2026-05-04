@@ -340,7 +340,16 @@ def _classifier_run(chunks: list[dict]) -> Any:
         workflow_id=f"drift-{int(datetime.now().timestamp() * 1000)}",
         assessment_id="golden-classifier-001",
         assessor_id="drift-runner",
-        classification_type=ClassificationType.SUFFICIENCY_AND_TOPICS,
+        # TOPICS_ONLY skips the sufficiency probe so the small drift fixture
+        # (3 short OOP chunks) does not short-circuit at the gate. Drift
+        # metrics measure topic-extraction quality; sufficiency is its own
+        # canary-leak / retrieval-poisoning surface that uses different
+        # fixtures. With SUFFICIENCY_AND_TOPICS the 3-chunk fixture fails
+        # the probe → response.topics=None → every quality metric scores
+        # against an empty actual_output → AnswerRelevancyMetric and
+        # BiasMetric correctly return 0 while the 3 other quality metrics
+        # vacuously return 1 (no claims to grade = no claims to fail).
+        classification_type=ClassificationType.TOPICS_ONLY,
         chunks=chunks,
     )
     return asyncio.run(service.classify(request))
