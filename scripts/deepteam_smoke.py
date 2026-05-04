@@ -54,7 +54,13 @@ _SESSION_ID = (
 
 
 def _broker_invoke(prompt: str, task_key: str, timeout: float = 60.0) -> str:
-    """POST /api/v1/generate with the broker-required body fields."""
+    """POST /api/v1/generate with the broker-required body fields.
+
+    `guardrail_mode: "audit"` is mandatory for adversarial prompts —
+    without it the broker's L-10 guardrails return HTTP 422 on harmful
+    content. Audit mode lets the prompt flow through and surfaces
+    findings as response metadata so the LLM-judge can still score.
+    """
     body = json.dumps({
         "prompt": prompt,
         "task_key": task_key,
@@ -62,6 +68,7 @@ def _broker_invoke(prompt: str, task_key: str, timeout: float = 60.0) -> str:
         "agent_id": "deepteam-smoke",
         "prompt_version": "testing/deepteam_smoke@v1",
         "temperature": 0.0,
+        "guardrail_mode": "audit",
     }).encode()
     req = urllib.request.Request(
         f"{MODEL_BROKER_URL}/api/v1/generate",
@@ -86,10 +93,13 @@ def _build_models():
         def get_model_name(self) -> str:
             return f"model-broker-judge@{MODEL_BROKER_URL}"
 
-        def generate(self, prompt: str) -> str:
+        # DeepEval-3.9+ may pass `schema=<pydantic-class>` and other kwargs
+        # via generate_with_schema(). Accept and ignore — broker returns
+        # JSON-best-effort text and library falls back to text parsing.
+        def generate(self, prompt: str, *args, **kwargs) -> str:  # noqa: ARG002
             return _broker_invoke(prompt, JUDGE_TASK_KEY)
 
-        async def a_generate(self, prompt: str) -> str:
+        async def a_generate(self, prompt: str, *args, **kwargs) -> str:  # noqa: ARG002
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, _broker_invoke, prompt, JUDGE_TASK_KEY)
 

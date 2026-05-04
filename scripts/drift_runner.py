@@ -123,10 +123,15 @@ def _build_judge():
         def get_model_name(self) -> str:
             return f"model-broker@{MODEL_BROKER_URL}"
 
-        def generate(self, prompt: str) -> str:
+        # DeepEval-3.9+ may pass `schema=<pydantic-class>` for structured
+        # output via generate_with_schema(). We accept and ignore it here —
+        # the broker returns JSON-best-effort text and DeepEval falls back
+        # to text parsing. Other kwargs (max_tokens, temperature) likewise
+        # tolerated to avoid TypeError under the wrapper's TypeError-fallback.
+        def generate(self, prompt: str, *args, **kwargs) -> str:  # noqa: ARG002
             return _broker_invoke(prompt)
 
-        async def a_generate(self, prompt: str) -> str:
+        async def a_generate(self, prompt: str, *args, **kwargs) -> str:  # noqa: ARG002
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, _broker_invoke, prompt)
 
