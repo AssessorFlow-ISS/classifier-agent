@@ -38,8 +38,8 @@ Design notes (copied from the canonical doc-string)
 Environment variables
 ---------------------
 ``SUBMISSION_SERVICE_GRPC_URL``
-    ``host:port`` of the Submission Service gRPC endpoint. Defaults to
-    ``localhost:9001`` for local dev.
+    ``host:port`` of the Submission Service gRPC endpoint. REQUIRED — no
+    source-code default. Set via deployment env / `.env` file.
 """
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ from classification_agent._grpc import submission_pb2, submission_pb2_grpc
 
 logger = structlog.get_logger(__name__)
 
-_DEFAULT_GRPC_URL = "localhost:9001"
+_DEFAULT_GRPC_URL = ""  # No localhost default — env var is the source of truth.
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 _RETRY_MAX_ATTEMPTS = 3
 _RETRY_BASE_BACKOFF_SECONDS = 0.25

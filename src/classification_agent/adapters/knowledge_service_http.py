@@ -5,7 +5,7 @@ Returns Classification Agent-specific types (ChunkData, SimilarityResult,
 PolicyChunk) by mapping from the KS JSON responses.
 
 Environment Variables:
-    KS_URL: Base URL for the Knowledge Service (default: http://localhost:8020)
+    KS_URL: Base URL for the Knowledge Service. REQUIRED — no source-code default.
 """
 from __future__ import annotations
 
@@ -34,9 +34,12 @@ class KnowledgeServiceHttpAdapter(KnowledgeServicePort):
         base_url: str | None = None,
         timeout: float = 30.0,
     ) -> None:
-        self._base_url = base_url or os.environ.get(
-            "KS_URL", "http://localhost:8020"
-        )
+        env_url = os.environ.get("KS_URL", "").strip()
+        self._base_url = base_url or env_url
+        if not self._base_url:
+            raise RuntimeError(
+                "KS_URL env var is required (no source-code default)"
+            )
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
             timeout=timeout,

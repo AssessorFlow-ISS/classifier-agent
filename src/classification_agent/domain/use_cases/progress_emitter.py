@@ -35,11 +35,15 @@ class ProgressEmitter:
         payload = _json.dumps({"pipeline_group": "classification-pipeline", "stage": stage})
         try:
             import asyncpg
-            host = os.getenv("ORCHESTRATOR_DB_HOST", "localhost")
-            port = os.getenv("ORCHESTRATOR_DB_PORT", "15432")
-            name = os.getenv("ORCHESTRATOR_DB_NAME", "af_orchestrator")
-            user = os.getenv("ORCHESTRATOR_DB_USER", "assessorflow")
-            password = os.getenv("ORCHESTRATOR_DB_PASSWORD", "dev_password")
+            # All ORCHESTRATOR_DB_* env vars are REQUIRED — no source defaults.
+            # Missing any of them is a configuration bug; the outer try/except
+            # below converts it into a swallowed warning so the pipeline never
+            # blocks on progress-event writes.
+            host = os.environ["ORCHESTRATOR_DB_HOST"]
+            port = os.environ["ORCHESTRATOR_DB_PORT"]
+            name = os.environ["ORCHESTRATOR_DB_NAME"]
+            user = os.environ["ORCHESTRATOR_DB_USER"]
+            password = os.environ["ORCHESTRATOR_DB_PASSWORD"]
             dsn = f"postgresql://{user}:{password}@{host}:{port}/{name}"
             conn = await asyncpg.connect(dsn)
             try:

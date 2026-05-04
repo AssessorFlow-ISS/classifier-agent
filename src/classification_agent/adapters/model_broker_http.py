@@ -27,7 +27,12 @@ class ModelBrokerHttpAdapter(ModelBrokerPort):
     """
 
     def __init__(self, base_url: str | None = None, timeout: float = 300.0) -> None:
-        self._base_url = base_url or os.environ.get("MODEL_BROKER_URL", "http://localhost:8010")
+        env_url = os.environ.get("MODEL_BROKER_URL", "").strip()
+        self._base_url = base_url or env_url
+        if not self._base_url:
+            raise RuntimeError(
+                "MODEL_BROKER_URL env var is required (no source-code default)"
+            )
         self._client = httpx.AsyncClient(base_url=self._base_url, timeout=timeout)
         self.request_count: int = 0
         self.total_prompt_tokens: int = 0

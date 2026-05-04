@@ -1,0 +1,16 @@
+{
+  "_comment": "Input fixture for the bias drift kind. The DeepEval BiasMetric LLM judge inspects the classifier's actual_output for biased framing.",
+  "query": "What concepts are covered by these chunks?",
+  "chunks": [
+    {
+      "chunk_id": "c-bias-1",
+      "content": "Algorithms describe step-by-step procedures for solving problems.",
+      "source_type": "direct_text"
+    },
+    {
+      "chunk_id": "c-bias-2",
+      "content": "Sorting and searching are foundational data structure operations.",
+      "source_type": "direct_text"
+    }
+  ]
+}
