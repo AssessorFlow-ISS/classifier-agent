@@ -39,10 +39,12 @@ class TestSubmissionClientLifecycle:
         client = SubmissionClient()
         assert client._grpc_url == "submission:5001"
 
-    def test_default_grpc_url_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_grpc_url_required_no_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # PROD-safety: no source-code localhost default. Missing env -> "" url
+        # which downstream rejects on connect. Verify the empty-default contract.
         monkeypatch.delenv("SUBMISSION_SERVICE_GRPC_URL", raising=False)
         client = SubmissionClient()
-        assert client._grpc_url == "localhost:9001"
+        assert client._grpc_url == ""
 
     def test_explicit_grpc_url_overrides_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SUBMISSION_SERVICE_GRPC_URL", "ignored:1")

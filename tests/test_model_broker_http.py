@@ -137,6 +137,9 @@ class TestModelBrokerHttpAdapter:
             await adapter.close()
             mock_close.assert_called_once()
 
-    def test_default_base_url(self) -> None:
-        adapter = ModelBrokerHttpAdapter()
-        assert "localhost:8010" in adapter._base_url
+    def test_missing_base_url_raises(self, monkeypatch) -> None:
+        # PROD-safety: no source-code localhost default. Missing env must raise.
+        import pytest as _pytest
+        monkeypatch.delenv("MODEL_BROKER_URL", raising=False)
+        with _pytest.raises(RuntimeError, match="MODEL_BROKER_URL env var is required"):
+            ModelBrokerHttpAdapter()
