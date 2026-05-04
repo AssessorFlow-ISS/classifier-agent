@@ -4,7 +4,7 @@ name: Drift — Contextual Precision
 
 on:
   schedule:
-    - cron: '0 0 * * 1'   # weekly Mon 08:00 SGT (Mon 00:00 UTC)
+    - cron: '5 8 * * 1'    # weekly Mon 16:05 SGT (Mon 08:05 UTC) — 5-min stagger slot 4/9
   workflow_dispatch:
 
 permissions:

@@ -6,7 +6,7 @@ name: Drift — Retrieval Poisoning
 
 on:
   schedule:
-    - cron: '0 5 * * 1'   # weekly Mon 13:00 SGT (Mon 05:00 UTC)
+    - cron: '30 8 * * 1'   # weekly Mon 16:30 SGT (Mon 08:30 UTC) — 5-min stagger slot 9/9
   workflow_dispatch:
 
 permissions:

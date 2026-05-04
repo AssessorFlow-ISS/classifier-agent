@@ -4,7 +4,7 @@ name: Drift — Contextual Recall
 
 on:
   schedule:
-    - cron: '0 1 * * 1'   # weekly Mon 09:00 SGT (Mon 01:00 UTC)
+    - cron: '10 8 * * 1'   # weekly Mon 16:10 SGT (Mon 08:10 UTC) — 5-min stagger slot 5/9
   workflow_dispatch:
 
 permissions:
