@@ -30,11 +30,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Configuration ──
+#
+# Lessons-learned from CI fix (drift_runner.py / deepteam_smoke.py):
+# every secret + service URL is REQUIRED via os.environ[] — silent defaults
+# mask misconfiguration and let CI silently produce wrong results.
+# Run-config that's safe to default (BASELINE_DIR, TIMEOUT, SCENARIO,
+# GOLDEN_PARTICIPANT_EMAIL) keeps its default — those don't affect what
+# the test actually exercises.
 
-API_SERVER = os.environ.get("API_SERVER_URL", "http://api-server-golden:8001")
-LANGFUSE_HOST = os.environ.get("LANGFUSE_HOST", "")
-LANGFUSE_PK = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
-LANGFUSE_SK = os.environ.get("LANGFUSE_SECRET_KEY", "")
+# REQUIRED — secrets + service URLs (raise on missing)
+API_SERVER = os.environ["API_SERVER_URL"]
+LANGFUSE_HOST = os.environ["LANGFUSE_HOST"]
+LANGFUSE_PK = os.environ["LANGFUSE_PUBLIC_KEY"]
+LANGFUSE_SK = os.environ["LANGFUSE_SECRET_KEY"]
+
+# OPTIONAL — run-config defaults (safe to fall back; not security-critical)
 BASELINE_DIR = Path(os.environ.get("BASELINE_DIR", "/tmp/baselines"))
 TIMEOUT = int(os.environ.get("WORKFLOW_TIMEOUT_S", "300"))
 SCENARIO = os.environ.get("GOLDEN_SCENARIO", "insufficient")
@@ -194,11 +204,13 @@ async def _run_full_pipeline(workflow_id: str, assessment_id: str) -> str:
     """
     import asyncpg
 
-    host = os.environ.get("ORCHESTRATOR_DB_HOST", "localhost")
-    port = os.environ.get("ORCHESTRATOR_DB_PORT", "5432")
-    name = os.environ.get("ORCHESTRATOR_DB_NAME", "af_orchestrator_golden")
-    user = os.environ.get("ORCHESTRATOR_DB_USER", "assessorflow")
-    password = os.environ.get("ORCHESTRATOR_DB_PASSWORD", "dev_password")
+    # All DB connection params REQUIRED — `dev_password` default would mask
+    # a CI-secrets misconfiguration and silently produce wrong results.
+    host = os.environ["ORCHESTRATOR_DB_HOST"]
+    port = os.environ["ORCHESTRATOR_DB_PORT"]
+    name = os.environ["ORCHESTRATOR_DB_NAME"]
+    user = os.environ["ORCHESTRATOR_DB_USER"]
+    password = os.environ["ORCHESTRATOR_DB_PASSWORD"]
     dsn = f"postgresql://{user}:{password}@{host}:{port}/{name}"
 
     # Stage 1-5: Wait for pipeline to reach HITL Gate 1 or auto-advance past it
@@ -553,7 +565,9 @@ async def run():
     print("Step 2: Downloading material from GCS...")
     from google.cloud import storage as gcs_client
     client = gcs_client.Client()
-    bucket_name = os.environ.get("GCS_BUCKET", "langfusepipelineaflow-assessorflow-materials")
+    # GCS_BUCKET REQUIRED — silent default would point at the wrong bucket
+    # and silently fail every download.
+    bucket_name = os.environ["GCS_BUCKET"]
     gcs_bucket = client.bucket(bucket_name)
 
     # Material paths per scenario

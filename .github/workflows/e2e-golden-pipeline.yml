@@ -96,6 +96,9 @@ jobs:
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
 
       - name: Run golden_workflow_eval.py (full e2e)
+        # All required envs explicit — golden_workflow_eval.py raises on
+        # any missing secret/URL after the lessons-learned hardening
+        # (was silent os.environ.get(..., default) — now os.environ[]).
         env:
           API_SERVER_URL: http://localhost:8001
           ORCHESTRATOR_DB_HOST: localhost
@@ -106,6 +109,7 @@ jobs:
           LANGFUSE_HOST: http://localhost:3000
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          GCS_BUCKET: ${{ env.GCS_BUCKET }}
           GOLDEN_SCENARIO: ${{ inputs.scenario || 'insufficient' }}
           BASELINE_DIR: ${{ runner.temp }}/baselines
           WORKFLOW_TIMEOUT_S: "600"
