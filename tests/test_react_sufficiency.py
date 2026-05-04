@@ -440,7 +440,7 @@ class TestReActAutonomyReasoning:
         assert result.autonomy_exercised is False
 
     async def test_react_prompt_version_format(self) -> None:
-        """AC-12: ReactSufficiencyProber has correct prompt version format (v5)."""
+        """AC-12: ReactSufficiencyProber surfaces the MANIFEST-resolved version."""
         ks = StubKnowledgeServiceAdapter()
         mb = StubModelBrokerAdapter()
 
@@ -448,10 +448,12 @@ class TestReActAutonomyReasoning:
 
         # ADR-39 format `<agent>/<template>@v<n>`; `<agent>` derives from
         # checkout dir so match the suffix and presence of `@v` only.
+        # The exact version is read from prompts/react_sufficiency/MANIFEST.yaml's
+        # 'current' field — assert it ends with '/react_sufficiency@vN' rather
+        # than hardcoding a specific N (which would have to be bumped alongside
+        # every prompt version change).
         assert "/" in prober.prompt_version
-        assert "@v" in prober.prompt_version
-        assert "@v" in prober.prompt_version
-        assert "@v5" in prober.prompt_version
+        assert "/react_sufficiency@v" in prober.prompt_version
 
 
 class TestReActResultModel:

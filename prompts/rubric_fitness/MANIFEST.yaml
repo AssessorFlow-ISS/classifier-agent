@@ -1,0 +1,7 @@
+template: rubric_fitness
+current: v2
+history:
+  - version: v2
+    file: v2.yaml
+    body_preserved: true
+    summary: "Initial committed version of rubric_fitness prompt; see frontmatter for details"

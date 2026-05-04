@@ -1,0 +1,31 @@
+---
+version: "3"
+model_tier: CHEAP
+temperature: 0.1
+max_output_tokens: 1024
+top_p: 0.95
+confidence_threshold: 0.75
+description: "v3 of ReAct sufficiency probe — historical record. v3 was the initial ReAct sufficiency probing implementation with SimilaritySearch tool calls only (no rubric fitness; no SearchPolicies). Body content not preserved at commit time."
+created: "2026-04-05"
+updated: "2026-04-05"
+fallback_chain: [vertex_ai, openai]
+patterns:
+  - "ReAct (Reason + Action)"
+  - "Contextual Grounding"
+  - "Tool Use"
+reconstructed: true
+body_preserved: false
+preservation_note: >
+  v3 was never committed as a standalone file. This record exists for
+  versioning provenance only. The historical body is not recoverable from
+  any single git SHA because v3's content was overwritten in-place by v4
+  on 2026-04-23. v3 only emitted the sufficiency verdict (no rubric fields)
+  and called only SimilaritySearch (no SearchPolicies). For the closest
+  available reference shape, see v5.yaml minus the RUBRIC STRATEGY block
+  and minus the rubric_fitness/rubric_reasoning/rubric_source output fields.
+---
+# v3 body not preserved at commit time
+#
+# This file is a historical placeholder. See preservation_note in the
+# frontmatter above. For runtime use, the active version is named in
+# MANIFEST.yaml's 'current' field; v3 is no longer the active version.

@@ -35,7 +35,7 @@ class GuardrailBlockedError(RuntimeError):
 
 
 _TASK_KEY = "classification.topic_extraction"
-_PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "topic_extraction.yaml"
+_PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "topic_extraction"
 _, _TOPIC_EXTRACTION_TEMPLATE = load_prompt(_PROMPT_PATH)
 
 
@@ -113,6 +113,7 @@ class TopicExtractor:
             workflow_id=workflow_id,
             response_format="json",
             response_schema=TOPIC_EXTRACTION_SCHEMA,
+            prompt_version=self._prompt_version,
         )
         self.last_model_used = llm_result.get("model_used", "unknown")
 

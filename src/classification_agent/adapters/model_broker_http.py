@@ -53,8 +53,15 @@ class ModelBrokerHttpAdapter(ModelBrokerPort):
         experiment_id: str | None = None,
         response_format: str | None = None,
         response_schema: dict | None = None,
+        prompt_version: str | None = None,
     ) -> dict[str, Any]:
         """Call Model Broker and return the full response as a dict."""
+        if not prompt_version:
+            raise ValueError(
+                "prompt_version is required (ADR-39): caller must pass the "
+                "MANIFEST-resolved tag such as 'classification/<template>@v<n>'. "
+                "No fallback to '@v1' — Langfuse traces depend on the real version."
+            )
         request_body: dict[str, Any] = {
             "task_key": task_key,
             "prompt": prompt,
@@ -62,7 +69,7 @@ class ModelBrokerHttpAdapter(ModelBrokerPort):
             "temperature": 0.3,
             "session_id": workflow_id or "unknown",
             "agent_id": "classification-agent",
-            "prompt_version": f"classification/{task_key.split('.')[-1]}@v1",
+            "prompt_version": prompt_version,
         }
         if response_format:
             request_body["response_format"] = response_format
@@ -193,8 +200,15 @@ class ModelBrokerHttpAdapter(ModelBrokerPort):
         tools: list[dict[str, Any]],
         *,
         workflow_id: str | None = None,
+        prompt_version: str | None = None,
     ) -> dict[str, Any]:
         """Call Model Broker with tool definitions for ReAct reasoning."""
+        if not prompt_version:
+            raise ValueError(
+                "prompt_version is required (ADR-39): caller must pass the "
+                "MANIFEST-resolved tag such as 'classification/<template>@v<n>'. "
+                "No fallback to '@v1' — Langfuse traces depend on the real version."
+            )
         request_body = {
             "task_key": task_key,
             "messages": messages,
@@ -203,7 +217,7 @@ class ModelBrokerHttpAdapter(ModelBrokerPort):
             "temperature": 0.3,
             "session_id": workflow_id or "unknown",
             "agent_id": "classification-agent",
-            "prompt_version": f"classification/{task_key.split('.')[-1]}@v1",
+            "prompt_version": prompt_version,
         }
 
         logger.info("model_broker_tool_request", task_key=task_key, workflow_id=workflow_id)

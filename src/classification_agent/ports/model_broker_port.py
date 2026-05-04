@@ -22,6 +22,7 @@ class ModelBrokerPort(ABC):
         experiment_id: str | None = None,
         response_format: str | None = None,
         response_schema: dict | None = None,
+        prompt_version: str | None = None,
     ) -> dict[str, Any]:
         """Send a prompt to the Model Broker and return parsed JSON response.
 
@@ -33,6 +34,9 @@ class ModelBrokerPort(ABC):
             experiment_id: Langfuse experiment ID for tracing.
             response_format: Set to "json" to enforce structured JSON output.
             response_schema: JSON Schema for the expected response structure.
+            prompt_version: ADR-39 ``<agent>/<template>@v<n>`` tag, resolved
+                from the prompt's MANIFEST.yaml at load time. Required by
+                the HTTP adapter; the stub adapter ignores it.
         """
 
     @abstractmethod
@@ -43,6 +47,7 @@ class ModelBrokerPort(ABC):
         tools: list[dict[str, Any]],
         *,
         workflow_id: str | None = None,
+        prompt_version: str | None = None,
     ) -> dict[str, Any]:
         """Send messages with tool definitions and return response with optional tool_calls.
 
@@ -55,6 +60,8 @@ class ModelBrokerPort(ABC):
             messages: Conversation messages in OpenAI chat format.
             tools: Tool definitions in OpenAI function-calling format.
             workflow_id: Workflow ID for tracing.
+            prompt_version: ADR-39 ``<agent>/<template>@v<n>`` tag (see
+                ``invoke``). Required by the HTTP adapter.
 
         Returns:
             Dict with ``tool_calls`` (list) and ``content`` (dict | None).

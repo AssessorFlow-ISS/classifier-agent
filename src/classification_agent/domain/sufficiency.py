@@ -23,7 +23,7 @@ ToolExecutor = Callable[[str, dict[str, Any]], Any]
 logger = structlog.get_logger(__name__)
 
 _REACT_TASK_KEY = "classification.react_sufficiency"
-_REACT_PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "react_sufficiency.yaml"
+_REACT_PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "react_sufficiency"
 _REACT_FRONTMATTER, _REACT_USER_TEMPLATE = load_prompt(_REACT_PROMPT_PATH)
 # v5+ splits the persona/rules/output contract into frontmatter.system_prompt
 # and keeps the per-workflow task context in the body.
@@ -143,6 +143,7 @@ class ReactSufficiencyProber:
                 messages=messages,
                 tools=tools,
                 workflow_id=self._workflow_id,
+                prompt_version=self._prompt_version,
             )
             # Capture model_used from response (if available)
             if response.get("model_used"):

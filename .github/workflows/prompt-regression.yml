@@ -1,0 +1,167 @@
+name: Prompt Regression Gate
+
+# Path-filtered post-merge regression check. Fires on any push to main that
+# touches prompts/** — typically the merge commit of a prompt-bump PR.
+# Runs the full DeepEval drift suite (4 quality metrics + bias) plus the
+# Promptfoo OWASP smoke against the bumped prompt. A red signal here is the
+# trigger for a revert PR (see docs/PROMPT_VERSIONING.md → Regression gate).
+#
+# This is a POST-MERGE gate by design — it does not block the originating
+# PR's merge. The trade-off is documented in docs/PROMPT_VERSIONING.md and
+# in the individual report §2.6.7. Pre-merge variant is residual debt.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'prompts/**'
+  workflow_dispatch:
+    inputs:
+      template:
+        description: "Template name to log (informational only — gate runs the full suite regardless)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: prompt-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  detect-changed-templates:
+    name: Detect changed templates
+    runs-on: ubuntu-latest
+    outputs:
+      templates: ${{ steps.detect.outputs.templates }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: detect
+        run: |
+          # On push events, compare HEAD to its parent. On workflow_dispatch,
+          # use the input or fall back to "all" since we can't infer a diff.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            templates="${{ inputs.template }}"
+            [ -z "$templates" ] && templates="(manual dispatch — no diff)"
+            echo "templates=$templates" >> "$GITHUB_OUTPUT"
+          else
+            changed=$(git diff --name-only HEAD~1 HEAD -- 'prompts/**' \
+                      | awk -F/ '/^prompts\// {print $2}' | sort -u | xargs)
+            [ -z "$changed" ] && changed="(no template diff detected — running full suite anyway)"
+            echo "templates=$changed" >> "$GITHUB_OUTPUT"
+          fi
+
+  drift-quality-suite:
+    name: DeepEval drift suite (quality, post-merge)
+    needs: detect-changed-templates
+    strategy:
+      fail-fast: false
+      matrix:
+        drift_kind:
+          - faithfulness
+          - answer-relevancy
+          - bias
+          - contextual-precision
+          - contextual-recall
+    uses: ./.github/workflows/_drift-base.yml
+    with:
+      drift_kind: ${{ matrix.drift_kind }}
+    secrets: inherit
+
+  promptfoo-owasp-smoke:
+    name: Promptfoo OWASP smoke (post-merge)
+    needs: detect-changed-templates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT: thet-integration-af
+      WIF_PROVIDER: projects/459087601514/locations/global/workloadIdentityPools/github-actions/providers/github
+      GCP_SA: github-actions@thet-integration-af.iam.gserviceaccount.com
+      CLUSTER: af-smoke-cluster
+      CLUSTER_LOCATION: asia-southeast1-b
+      MB_PF_URL: http://127.0.0.1:8010
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.CLUSTER }}
+          location: ${{ env.CLUSTER_LOCATION }}
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+      - name: Port-forward Model Broker
+        run: |
+          kubectl port-forward -n af-platform svc/model-broker 8010:8000 > /tmp/pf-mb.log 2>&1 &
+          echo $! > /tmp/pf-mb.pid
+          for i in 1 2 3 4 5; do
+            curl -sf http://localhost:8010/health > /dev/null 2>&1 && break
+            sleep 2
+          done
+      - name: Run Promptfoo OWASP smoke
+        env:
+          MODEL_BROKER_URL: ${{ env.MB_PF_URL }}
+        run: |
+          npx promptfoo@latest eval -c promptfoo.yaml \
+            --output ./prompt-regression-promptfoo.json
+      - name: Tear down port-forward
+        if: always()
+        run: |
+          [ -f /tmp/pf-mb.pid ] && kill "$(cat /tmp/pf-mb.pid)" 2>/dev/null || true
+      - name: Upload Promptfoo result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-regression-promptfoo-${{ github.run_id }}
+          path: prompt-regression-promptfoo.json
+          retention-days: 30
+
+  summarise:
+    name: Summarise gate outcome
+    needs: [detect-changed-templates, drift-quality-suite, promptfoo-owasp-smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Step summary
+        env:
+          TEMPLATES: ${{ needs.detect-changed-templates.outputs.templates }}
+          QUALITY: ${{ needs.drift-quality-suite.result }}
+          OWASP: ${{ needs.promptfoo-owasp-smoke.result }}
+        run: |
+          {
+            echo "## Prompt Regression Gate"
+            echo ""
+            echo "**Trigger:** ${{ github.event_name }} on ${{ github.ref }}"
+            echo "**Commit:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
+            echo "**Templates touched:** \`${TEMPLATES}\`"
+            echo ""
+            echo "| Job | Result |"
+            echo "|---|---|"
+            echo "| DeepEval drift suite (5 metrics) | ${QUALITY} |"
+            echo "| Promptfoo OWASP smoke | ${OWASP} |"
+            echo ""
+            if [ "${QUALITY}" = "failure" ] || [ "${OWASP}" = "failure" ]; then
+              echo "### Action required"
+              echo "Quality regressed against the prior baseline. Per \`docs/PROMPT_VERSIONING.md\` → *How to roll back a version*, open a revert PR that:"
+              echo "1. Sets MANIFEST.yaml \`current\` back to the prior \`vN-1\`."
+              echo "2. (Optional) leaves the bad \`vN.yaml\` in the directory for history."
+            else
+              echo "### All clear"
+              echo "Bumped prompt held its quality + OWASP profile against the post-merge gate. The new \`current:\` version is confirmed stable."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
