@@ -12,12 +12,12 @@ Stateless FastAPI microservice for material sufficiency assessment and topic ext
 | `locoroco-git/AFlow_CICD/sandboxes/classifier-agent/` | Sandbox mirror — exercises the 9-card LLMOps PR DAG with **placeholder** drift jobs |
 | `AssessorFlow-ISS/classifier-agent` (this repo) | Production CI tier — REAL golden + drift workflows wired to `thet-integration-af` GCP via WIF |
 
-## What It Does (Phase 4 of the assessment workflow)
+## What It Does (COntent Fitness Gating)
 
 1. **Sufficiency Check** — reads chunks stored by Validator Agent, runs unified ReAct probe (sufficiency + rubric fitness) via `SimilaritySearch` and `SearchPolicies` tool calls.
 2. **Topic Extraction** — synthesises hierarchical topics from chunks via Model Broker (CHEAP tier), persists to Knowledge Service.
 
-It never calls `ProcessMaterial` — chunks are already stored by the Validator Agent in Phase 3.
+It never have to call `ProcessMaterial` - chunks are already stored by the Validator Agent in in upstream processing.
 
 ## Quick Start
 
@@ -40,7 +40,7 @@ uvicorn classification_agent.main:app --reload
 
 ## Architecture
 
-Port-first hexagonal architecture (ADR-42). All external dependencies are behind abstract port interfaces with stub adapters for local development. Internal layout (post-Phase-1 refactor):
+Port-first hexagonal architecture (ADR-42). All external dependencies are behind abstract port interfaces. Internal layout:
 
 ```
 src/classification_agent/
@@ -87,7 +87,7 @@ src/classification_agent/
 | Tier | Where | What | Cost |
 |---|---|---|---|
 | Sandbox PR DAG (placeholder) | `locoroco-git/AFlow_CICD/.github/workflows/sandbox-classifier-agent-ci.yml` | 9-card lint/SAST/SCA/secret/unit/integration/build/quality/adversarial fan-out — placeholder LLM cards | ~$0 |
-| **REAL golden + drift** | `AssessorFlow-ISS/classifier-agent/.github/workflows/` (Phase 4 incoming) | 9 drift workflows + 1 golden-rebaseline against `af-golden` namespace via WIF; real LLM/KS/Pub/Sub/Langfuse | ~$0.30 per cycle |
+| **Golden Pipeline + Support drift detection scheduled Jobs** | `AssessorFlow-ISS/classifier-agent/.github/workflows/` | 9 drift workflows + 1 golden-rebaseline against `af-golden` namespace via WIF; PROD LLM/KS/Pub/Sub/Langfuse | ~$0.30 per cycle |
 
 ## License
 
