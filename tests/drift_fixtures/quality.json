@@ -1,0 +1,22 @@
+{
+  "_comment": "Input fixture for the 4 quality drift kinds (faithfulness, answer-relevancy, contextual-precision, contextual-recall) plus score-consistency + llm-base. The DeepEval LLM judge measures the classifier's actual_output (real topics returned by the in-cluster classifier) against expected_output and retrieval_context. No score values appear in this file — only inputs.",
+  "query": "Which programming concepts are covered by the source material?",
+  "expected_output": "object-oriented programming, polymorphism, encapsulation, inheritance",
+  "chunks": [
+    {
+      "chunk_id": "c-oop-1",
+      "content": "Object-oriented programming uses classes and inheritance to model behavior.",
+      "source_type": "direct_text"
+    },
+    {
+      "chunk_id": "c-oop-2",
+      "content": "Polymorphism enables one interface to serve multiple types via dynamic dispatch.",
+      "source_type": "direct_text"
+    },
+    {
+      "chunk_id": "c-oop-3",
+      "content": "Encapsulation hides internal state behind a public method contract.",
+      "source_type": "direct_text"
+    }
+  ]
+}

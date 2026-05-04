@@ -8,9 +8,8 @@ focused on translation: proto messages -> agent pydantic schemas.
 
 Environment variables:
     SUBMISSION_SERVICE_GRPC_URL: host:port of the submission service gRPC
-        endpoint (required in production). Defaults to ``localhost:9001``
-        for local dev. In-cluster value:
-        ``submission-service.af-submission.svc.cluster.local:9001``.
+        endpoint. REQUIRED in every environment — no source-code default.
+        In-cluster value: ``submission-service.af-submission.svc.cluster.local:9001``.
 """
 from __future__ import annotations
 

@@ -76,7 +76,8 @@ def _classify(category_id: str, response: str) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
-    parser.add_argument("--broker-url", default=os.environ.get("MODEL_BROKER_URL", "http://localhost:8010"))
+    # MODEL_BROKER_URL is REQUIRED — no source-code default.
+    parser.add_argument("--broker-url", default=os.environ["MODEL_BROKER_URL"])
     args = parser.parse_args()
 
     started = time.monotonic()

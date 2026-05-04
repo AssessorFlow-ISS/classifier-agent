@@ -36,8 +36,38 @@ structlog.configure(
 logger = structlog.get_logger(__name__)
 
 
+_PROD_ENVS = {"prod", "production", "smoke", "staging"}
+
+
+def _guard_prod_against_stubs() -> None:
+    """Refuse to start with stub adapters when ENV is prod/smoke/staging.
+
+    Hexagonal swap is for local dev. A misconfigured PROD deploy that
+    silently runs on stubs is worse than a loud boot-time crash.
+    """
+    env = os.environ.get("ENV", "dev").lower()
+    if env not in _PROD_ENVS:
+        return
+    stub_adapters: list[str] = []
+    if settings.knowledge_service_adapter not in ("http", "real"):
+        stub_adapters.append("KNOWLEDGE_SERVICE_ADAPTER")
+    if settings.assessment_config_adapter not in ("grpc", "real"):
+        stub_adapters.append("ASSESSMENT_CONFIG_ADAPTER")
+    if settings.model_broker_adapter not in ("http", "google_ai_studio", "vertex_ai"):
+        stub_adapters.append("MODEL_BROKER_ADAPTER")
+    if settings.event_publisher_adapter not in ("pubsub", "real", "emulator"):
+        stub_adapters.append("EVENT_PUBLISHER_ADAPTER")
+    if stub_adapters:
+        raise RuntimeError(
+            f"Refusing to boot in {env} with stub adapters: {', '.join(stub_adapters)}. "
+            "Set each to a non-stub value or unset ENV to dev."
+        )
+
+
 def _build_service() -> tuple[ClassificationService, Any]:
     """Wire up the ClassificationService. Returns (service, event_publisher)."""
+    _guard_prod_against_stubs()
+
     if settings.knowledge_service_adapter in ("http", "real"):
         from classification_agent.adapters.knowledge_service_http import KnowledgeServiceHttpAdapter
         knowledge_service = KnowledgeServiceHttpAdapter()
