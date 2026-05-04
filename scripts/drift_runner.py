@@ -220,13 +220,35 @@ def _build_judge():
             try:
                 json_schema = _clean_schema_for_gemini(schema.model_json_schema())
                 text = _broker_invoke(prompt, response_schema=json_schema)
-                return schema(**json.loads(text))
-            except (json.JSONDecodeError, urllib.error.HTTPError, ValueError) as e:
-                # Surface as TypeError so DeepEval's wrapper falls back to
-                # plain-text parsing rather than crashing the whole metric.
-                raise TypeError(
-                    f"structured generate failed for schema={schema.__name__!r}: {e}"
-                ) from e
+                parsed = json.loads(text)
+                return schema(**parsed)
+            except json.JSONDecodeError as e:
+                print(
+                    f"[drift_runner debug] _structured JSONDecodeError schema={schema.__name__!r}: "
+                    f"{e}; raw_text_preview={text!r:.200s}",
+                    file=sys.stderr,
+                )
+                raise TypeError(f"structured generate JSON parse failed: {e}") from e
+            except urllib.error.HTTPError as e:
+                err_body = ""
+                try:
+                    err_body = e.read().decode()[:500]
+                except Exception:
+                    pass
+                print(
+                    f"[drift_runner debug] _structured HTTPError schema={schema.__name__!r} "
+                    f"status={e.code}: body={err_body!r}",
+                    file=sys.stderr,
+                )
+                raise TypeError(f"structured generate HTTP {e.code}: {e}") from e
+            except ValueError as e:
+                # Includes pydantic ValidationError (subclass of ValueError)
+                print(
+                    f"[drift_runner debug] _structured ValueError schema={schema.__name__!r}: "
+                    f"{type(e).__name__}: {e}",
+                    file=sys.stderr,
+                )
+                raise TypeError(f"structured generate ValueError: {e}") from e
 
         def generate(self, prompt: str, *args, schema=None, **kwargs):  # noqa: ARG002
             if schema is None:
