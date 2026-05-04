@@ -53,15 +53,50 @@ _SESSION_ID = (
 )
 
 
-def _broker_invoke(prompt: str, task_key: str, timeout: float = 60.0) -> str:
+def _clean_schema_for_gemini(schema_dict: dict) -> dict:
+    """Gemini's response_schema rejects $defs / title / additionalProperties.
+
+    Inline-resolves $ref and strips unsupported keys recursively.
+    Per ``feedback_gemini_schema_compat`` user memory.
+    """
+    defs = schema_dict.get("$defs", {})
+
+    def _resolve(node):
+        if isinstance(node, dict):
+            if "$ref" in node:
+                ref = node["$ref"].split("/")[-1]
+                return _resolve(defs.get(ref, {}))
+            return {
+                k: _resolve(v)
+                for k, v in node.items()
+                if k not in ("$defs", "title", "additionalProperties", "default")
+            }
+        if isinstance(node, list):
+            return [_resolve(item) for item in node]
+        return node
+
+    return _resolve(schema_dict)
+
+
+def _broker_invoke(
+    prompt: str,
+    task_key: str,
+    *,
+    response_schema: dict | None = None,
+    timeout: float = 60.0,
+) -> str:
     """POST /api/v1/generate with the broker-required body fields.
 
     `guardrail_mode: "audit"` is mandatory for adversarial prompts —
     without it the broker's L-10 guardrails return HTTP 422 on harmful
     content. Audit mode lets the prompt flow through and surfaces
     findings as response metadata so the LLM-judge can still score.
+
+    When `response_schema` is provided, requests structured JSON output
+    matching that schema (used by DeepTeam's bias/toxicity/etc. simulators
+    which call ``judge.generate(prompt, schema=SyntheticDataList)``).
     """
-    body = json.dumps({
+    payload_body: dict = {
         "prompt": prompt,
         "task_key": task_key,
         "session_id": _SESSION_ID,
@@ -69,7 +104,12 @@ def _broker_invoke(prompt: str, task_key: str, timeout: float = 60.0) -> str:
         "prompt_version": "testing/deepteam_smoke@v1",
         "temperature": 0.0,
         "guardrail_mode": "audit",
-    }).encode()
+    }
+    if response_schema is not None:
+        payload_body["response_format"] = "json"
+        payload_body["response_schema"] = response_schema
+
+    body = json.dumps(payload_body).encode()
     req = urllib.request.Request(
         f"{MODEL_BROKER_URL}/api/v1/generate",
         data=body,
@@ -93,15 +133,29 @@ def _build_models():
         def get_model_name(self) -> str:
             return f"model-broker-judge@{MODEL_BROKER_URL}"
 
-        # DeepEval-3.9+ may pass `schema=<pydantic-class>` and other kwargs
-        # via generate_with_schema(). Accept and ignore — broker returns
-        # JSON-best-effort text and library falls back to text parsing.
-        def generate(self, prompt: str, *args, **kwargs) -> str:  # noqa: ARG002
-            return _broker_invoke(prompt, JUDGE_TASK_KEY)
+        # DeepEval-3.9+ passes `schema=<pydantic-class>` for structured output.
+        # DeepTeam's bias/toxicity/etc. simulators rely on this — they call
+        # ``self.simulator_model.generate(prompt, schema=SyntheticDataList)``
+        # and then access ``res.data``. We must return the Pydantic instance,
+        # not text. When schema is None (judge calls), return text directly.
+        def generate(self, prompt: str, *args, schema=None, **kwargs):  # noqa: ARG002
+            if schema is None:
+                return _broker_invoke(prompt, JUDGE_TASK_KEY)
+            json_schema = _clean_schema_for_gemini(schema.model_json_schema())
+            text = _broker_invoke(prompt, JUDGE_TASK_KEY, response_schema=json_schema)
+            return schema(**json.loads(text))
 
-        async def a_generate(self, prompt: str, *args, **kwargs) -> str:  # noqa: ARG002
+        async def a_generate(self, prompt: str, *args, schema=None, **kwargs):  # noqa: ARG002
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, _broker_invoke, prompt, JUDGE_TASK_KEY)
+            if schema is None:
+                return await loop.run_in_executor(None, _broker_invoke, prompt, JUDGE_TASK_KEY)
+            json_schema = _clean_schema_for_gemini(schema.model_json_schema())
+
+            def _call() -> str:
+                return _broker_invoke(prompt, JUDGE_TASK_KEY, response_schema=json_schema)
+
+            text = await loop.run_in_executor(None, _call)
+            return schema(**json.loads(text))
 
     async def target_callback(input_text: str) -> str:
         loop = asyncio.get_event_loop()
