@@ -113,12 +113,26 @@ jobs:
             curl -sf http://localhost:8010/health > /dev/null 2>&1 && break
             sleep 2
           done
+      - name: Install promptfoo
+        run: npm install -g promptfoo
       - name: Run Promptfoo OWASP smoke
+        # promptfoo.yaml uses ${MODEL_BROKER_URL} placeholders; promptfoo's
+        # URL parser does NOT expand process env in http provider URL
+        # fields, so we envsubst the YAML before invoking the eval. The
+        # post-envsubst guard exits 1 if any ${VAR} is left unexpanded so
+        # a silent URL-parse pass-by-default cannot recur (matches the
+        # ci.yml llm-promptfoo step pattern).
         env:
           MODEL_BROKER_URL: ${{ env.MB_PF_URL }}
         run: |
-          npx promptfoo@latest eval -c promptfoo.yaml \
-            --output ./prompt-regression-promptfoo.json
+          envsubst < promptfoo.yaml > promptfoo.expanded.yaml
+          if grep -q '\${MODEL_BROKER_URL}' promptfoo.expanded.yaml; then
+            echo "::error::envsubst did not expand MODEL_BROKER_URL in promptfoo.yaml"
+            exit 1
+          fi
+          promptfoo eval --config promptfoo.expanded.yaml \
+            --output ./prompt-regression-promptfoo.json \
+            --no-progress-bar
       - name: Tear down port-forward
         if: always()
         run: |
