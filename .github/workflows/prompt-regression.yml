@@ -58,7 +58,6 @@ jobs:
   drift-quality-suite:
     name: DeepEval drift suite (quality, post-merge)
     needs: detect-changed-templates
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
