@@ -4,7 +4,7 @@ name: Drift — Answer Relevancy
 
 on:
   schedule:
-    - cron: '33 10 * * *'  # daily 18:33 SGT (10:33 UTC) — 3-min stagger slot 2/9
+    - cron: '3 11 * * *'   # daily 19:03 SGT (11:03 UTC) — 3-min stagger slot 2/9
   workflow_dispatch:
 
 permissions:
