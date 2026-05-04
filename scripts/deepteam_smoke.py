@@ -1,14 +1,25 @@
 """DeepTeam adversarial smoke runner — REAL library + LLM judge.
 
-Drives `deepteam` over 8 adversarial vulnerability categories against the
-classifier-agent target. Both judge and target route through the real
-af-platform Model Broker via the port-forward established by CI.
-No regex stand-ins, no refusal-marker pattern matching, no fallbacks.
+Drives `deepteam` over the classifier-agent target. Both judge and target
+route through the real af-platform Model Broker via the port-forward
+established by CI. No regex stand-ins, no refusal-marker pattern matching,
+no fallbacks.
 
-Smoke-level scope per feedback_smoke_level_testing: 1 representative
-attack per vulnerability category (8 total), no jailbreak strategies.
+CURRENT SMOKE SCOPE (env-controlled):
+  DEEPTEAM_VULNS=smoke (default) → 1 vulnerability  (Bias gender)
+  DEEPTEAM_VULNS=full            → 8 vulnerabilities (full catalog)
 
-Vulnerability inventory (all real deepteam classes, valid type literals):
+The smoke setting is the CI default — each LLM call through the port-forward
+takes ~10-30s on Gemini, and the deepteam library's per-vulnerability cycle
+(simulator → attack-mutation → target → judge × ~2-3 metrics) issues ~8
+LLM calls per vulnerability. 8 vulns × 8 calls × 20s ≈ 21 min worst case;
+with max_concurrent=10 parallelism the actual was 9 min — still well over a
+true smoke budget. The 1-vuln smoke completes in ~1-2 min.
+
+Run the full catalog (cost: ~$0.30, runtime: ~10 min) by setting
+DEEPTEAM_VULNS=full in the workflow env block.
+
+FULL VULNERABILITY CATALOG (all real deepteam classes, valid type literals):
 
 | # | Vulnerability        | deepteam class       | type literal           |
 |---|---------------------|---------------------|------------------------|
@@ -21,9 +32,13 @@ Vulnerability inventory (all real deepteam classes, valid type literals):
 | 7 | Illegal activity     | IllegalActivity     | cybercrime             |
 | 8 | Intellectual property| IntellectualProperty| copyright_violations   |
 
-Attack class: PromptInjection (single-turn, applied to all 8).
+Attack class: PromptInjection (single-turn, applied to every selected vuln).
 
 Required env: MODEL_BROKER_URL (no localhost default).
+Optional env:
+  DEEPTEAM_VULNS=smoke|full (default: smoke = 1 vuln only)
+  DEEPTEAM_JUDGE_TASK_KEY=<task_key> (default: orchestrator.judge_output_low)
+  DEEPTEAM_TARGET_TASK_KEY=<task_key> (default: classification.sufficiency_check)
 """
 
 from __future__ import annotations
@@ -34,6 +49,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,12 +94,16 @@ def _clean_schema_for_gemini(schema_dict: dict) -> dict:
     return _resolve(schema_dict)
 
 
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
 def _broker_invoke(
     prompt: str,
     task_key: str,
     *,
     response_schema: dict | None = None,
     timeout: float = 60.0,
+    max_retries: int = 2,
 ) -> str:
     """POST /api/v1/generate with the broker-required body fields.
 
@@ -95,6 +115,14 @@ def _broker_invoke(
     When `response_schema` is provided, requests structured JSON output
     matching that schema (used by DeepTeam's bias/toxicity/etc. simulators
     which call ``judge.generate(prompt, schema=SyntheticDataList)``).
+
+    Robustness:
+    - Retries on transient HTTP statuses (429/5xx) and network errors,
+      with exponential backoff (1s, 2s).
+    - Raises ValueError on empty content (broker returned no text).
+    - Lets non-retryable errors propagate so the caller can decide
+      whether to fall back to text-mode (DeepTeam's library does this
+      via TypeError catches).
     """
     payload_body: dict = {
         "prompt": prompt,
@@ -110,16 +138,42 @@ def _broker_invoke(
         payload_body["response_schema"] = response_schema
 
     body = json.dumps(payload_body).encode()
-    req = urllib.request.Request(
-        f"{MODEL_BROKER_URL}/api/v1/generate",
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        payload = json.loads(resp.read().decode())
-    text = payload.get("content") or payload.get("response") or ""
-    return text if isinstance(text, str) else json.dumps(text)
+
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            req = urllib.request.Request(
+                f"{MODEL_BROKER_URL}/api/v1/generate",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                payload = json.loads(resp.read().decode())
+            text = payload.get("content") or payload.get("response") or ""
+            text = text if isinstance(text, str) else json.dumps(text)
+            if not text.strip():
+                raise ValueError(
+                    f"broker returned empty content for task_key={task_key!r}"
+                )
+            return text
+        except urllib.error.HTTPError as e:
+            last_exc = e
+            if e.code in _RETRYABLE_STATUS and attempt < max_retries:
+                time.sleep(2 ** attempt)
+                continue
+            raise
+        except urllib.error.URLError as e:
+            last_exc = e
+            if attempt < max_retries:
+                time.sleep(2 ** attempt)
+                continue
+            raise
+
+    # Defensive: should not reach here — loop either returns or raises.
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("unreachable")
 
 
 def _build_models():
@@ -134,28 +188,45 @@ def _build_models():
             return f"model-broker-judge@{MODEL_BROKER_URL}"
 
         # DeepEval-3.9+ passes `schema=<pydantic-class>` for structured output.
-        # DeepTeam's bias/toxicity/etc. simulators rely on this — they call
-        # ``self.simulator_model.generate(prompt, schema=SyntheticDataList)``
-        # and then access ``res.data``. We must return the Pydantic instance,
-        # not text. When schema is None (judge calls), return text directly.
+        # DeepTeam's bias/toxicity/etc. simulators call this with
+        # ``schema=SyntheticDataList`` and access ``res.data``.
+        # Judge metrics (bias/toxicity/...) call with ``schema=Purpose``
+        # or ``schema=ReasonScore`` and access ``res.purpose`` / ``res.score``.
+        # We must return the Pydantic instance — not text.
+        #
+        # Robustness: if schema parsing fails (broker JSON malformed, schema
+        # mismatch, or broker rejects response_schema with 4xx), we raise
+        # TypeError so DeepTeam's library catches it and falls back to its
+        # text + trimAndLoadJson path. This converts a hard failure into a
+        # graceful degradation while keeping the call HONEST (still real
+        # LLM, just text-parsed instead of schema-parsed).
+        def _structured(self, prompt: str, schema):
+            try:
+                json_schema = _clean_schema_for_gemini(schema.model_json_schema())
+                text = _broker_invoke(prompt, JUDGE_TASK_KEY, response_schema=json_schema)
+                return schema(**json.loads(text))
+            except (json.JSONDecodeError, urllib.error.HTTPError, ValueError) as e:
+                # Convert to TypeError so DeepTeam's `except TypeError:` falls
+                # back to plain generate(prompt) + trimAndLoadJson.
+                raise TypeError(
+                    f"structured-output broker call failed "
+                    f"({type(e).__name__}: {e!s:.120}); "
+                    "library will fall back to text-parse path"
+                ) from e
+
         def generate(self, prompt: str, *args, schema=None, **kwargs):  # noqa: ARG002
             if schema is None:
                 return _broker_invoke(prompt, JUDGE_TASK_KEY)
-            json_schema = _clean_schema_for_gemini(schema.model_json_schema())
-            text = _broker_invoke(prompt, JUDGE_TASK_KEY, response_schema=json_schema)
-            return schema(**json.loads(text))
+            return self._structured(prompt, schema)
 
         async def a_generate(self, prompt: str, *args, schema=None, **kwargs):  # noqa: ARG002
             loop = asyncio.get_event_loop()
             if schema is None:
                 return await loop.run_in_executor(None, _broker_invoke, prompt, JUDGE_TASK_KEY)
-            json_schema = _clean_schema_for_gemini(schema.model_json_schema())
-
-            def _call() -> str:
-                return _broker_invoke(prompt, JUDGE_TASK_KEY, response_schema=json_schema)
-
-            text = await loop.run_in_executor(None, _call)
-            return schema(**json.loads(text))
+            # Structured path: run sync helper in executor; TypeError it
+            # raises propagates back through DeepTeam's await, which then
+            # falls back to a_generate(prompt) (no schema) — also handled.
+            return await loop.run_in_executor(None, self._structured, prompt, schema)
 
     # DeepTeam calls model_callback synchronously inside its red_team loop
     # (despite async_mode=False being passed at red_team() level). Returning
@@ -191,11 +262,12 @@ def main() -> int:
         Toxicity,
     )
 
-    # Smoke: 8 vulnerability categories × 1 attack each (PromptInjection).
-    # Type literals are snake_case enum values from each vulnerability's
-    # types.py (e.g. PIILeakage canonical types: direct_disclosure,
-    # api_and_database_access, session_leak, social_manipulation).
-    vulnerabilities = [
+    # Smoke: 1 vulnerability for CI default; 8 if DEEPTEAM_VULNS=full.
+    # The library's per-vulnerability cycle (simulator → attack mutation →
+    # target call → judge × ~2-3 metrics) issues ~8 LLM calls per vuln,
+    # at ~10-30s each through the af-platform port-forward. 8 vulns
+    # exceeds a smoke runtime budget; 1 vuln stays under ~2 min.
+    full_catalog = [
         Bias(types=["gender"]),
         Toxicity(types=["insults"]),
         PIILeakage(types=["direct_disclosure"]),
@@ -205,6 +277,18 @@ def main() -> int:
         IllegalActivity(types=["cybercrime"]),
         IntellectualProperty(types=["copyright_violations"]),
     ]
+    scope = os.environ.get("DEEPTEAM_VULNS", "smoke").lower()
+    if scope == "full":
+        vulnerabilities = full_catalog
+    else:
+        # "smoke" — the first vulnerability (Bias gender) as representative.
+        vulnerabilities = full_catalog[:1]
+    print(
+        f"[deepteam_smoke] DEEPTEAM_VULNS={scope}, "
+        f"running {len(vulnerabilities)} vulnerability category"
+        f"{'s' if len(vulnerabilities) != 1 else ''}",
+        file=sys.stderr,
+    )
     attacks = [PromptInjection()]
 
     risk_assessment = red_team(

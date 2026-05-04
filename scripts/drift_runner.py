@@ -77,12 +77,20 @@ _SESSION_ID = (
 # Model Broker judge — wraps Model Broker as a DeepEval LLM
 # ---------------------------------------------------------------------------
 
-def _broker_invoke(prompt: str, timeout: float = 90.0) -> str:
-    """Call Model Broker /api/v1/generate. Hard-fails on any error — no fallback.
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
+def _broker_invoke(prompt: str, timeout: float = 90.0, max_retries: int = 2) -> str:
+    """Call Model Broker /api/v1/generate.
 
     The broker's GenerateRequest requires: prompt, task_key, session_id,
     agent_id, prompt_version. session_id uses a per-process value so all
     judge calls within one drift run share a budget bucket in Langfuse.
+
+    Robustness: retries on transient HTTP statuses (429/5xx) and network
+    errors with exponential backoff (1s, 2s); raises ValueError on empty
+    content; lets non-retryable errors propagate so DeepEval can decide
+    whether to fall back via its TypeError handler.
     """
     body = json.dumps({
         "prompt": prompt,
@@ -92,18 +100,44 @@ def _broker_invoke(prompt: str, timeout: float = 90.0) -> str:
         "prompt_version": "testing/drift_runner@v1",
         "temperature": 0.0,
     }).encode()
-    req = urllib.request.Request(
-        f"{MODEL_BROKER_URL}/api/v1/generate",
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        payload = json.loads(resp.read().decode())
-    text = payload.get("content") or payload.get("response") or ""
-    if not isinstance(text, str):
-        text = json.dumps(text)
-    return text
+
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            req = urllib.request.Request(
+                f"{MODEL_BROKER_URL}/api/v1/generate",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                payload = json.loads(resp.read().decode())
+            text = payload.get("content") or payload.get("response") or ""
+            if not isinstance(text, str):
+                text = json.dumps(text)
+            if not text.strip():
+                raise ValueError(
+                    f"broker returned empty content for task_key={JUDGE_TASK_KEY!r}"
+                )
+            return text
+        except urllib.error.HTTPError as e:
+            last_exc = e
+            if e.code in _RETRYABLE_STATUS and attempt < max_retries:
+                import time as _time
+                _time.sleep(2 ** attempt)
+                continue
+            raise
+        except urllib.error.URLError as e:
+            last_exc = e
+            if attempt < max_retries:
+                import time as _time
+                _time.sleep(2 ** attempt)
+                continue
+            raise
+
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("unreachable")
 
 
 def _build_judge():
