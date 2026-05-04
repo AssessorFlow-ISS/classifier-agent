@@ -2,9 +2,18 @@
 #
 # All 3 OWASP categories use Promptfoo's `llm-rubric` assertion type, which
 # routes through a separate provider for the judge. Both target and judge
-# call the Model Broker port-forward (localhost:8010) — established by the
-# CI workflow. No localhost defaults in source: the URL is set via
-# MODEL_BROKER_URL env var which CI exports.
+# call the Model Broker via the port-forward established by CI. The URL is
+# set via MODEL_BROKER_URL env var which CI exports — no localhost default.
+#
+# Body shape matches Model Broker's GenerateRequest: prompt, task_key,
+# session_id, agent_id, prompt_version are all required. We use real
+# CHEAP TASK_TIER_MAP entries (target → classification.sufficiency_check,
+# judge → orchestrator.judge_output_low) until dedicated `testing.*`
+# keys are added to the broker config.
+#
+# guardrail_mode: "audit" runs L-10 guardrails as metadata so adversarial
+# prompts that would normally be blocked still flow through the LLM and
+# produce judgeable output (audit results visible in response.guardrail_audit).
 #
 # Per-category: 1 representative test case (smoke). No jailbreak.
 
@@ -17,29 +26,38 @@ providers:
   - id: http
     label: model-broker-target
     config:
-      url: ${MODEL_BROKER_URL}/v1/invoke
+      url: ${MODEL_BROKER_URL}/api/v1/generate
       method: POST
       headers:
         Content-Type: application/json
       body:
-        task_key: "redteam.promptfoo_target"
         prompt: "{{prompt}}"
+        task_key: "classification.sufficiency_check"
+        session_id: "promptfoo-${GITHUB_RUN_ID}"
+        agent_id: "promptfoo-target"
+        prompt_version: "testing/promptfoo_target@v1"
+        temperature: 0.0
+        guardrail_mode: "audit"
       transformResponse: "json.content || json.response"
 
 defaultTest:
   options:
-    # LLM-rubric judge provider — same Model Broker, different task_key for
-    # routing telemetry separation.
+    # LLM-rubric judge provider — same Model Broker, different task_key
+    # (and different agent_id/prompt_version) for telemetry separation.
     provider:
       id: http
       config:
-        url: ${MODEL_BROKER_URL}/v1/invoke
+        url: ${MODEL_BROKER_URL}/api/v1/generate
         method: POST
         headers:
           Content-Type: application/json
         body:
-          task_key: "redteam.promptfoo_judge"
           prompt: "{{prompt}}"
+          task_key: "orchestrator.judge_output_low"
+          session_id: "promptfoo-${GITHUB_RUN_ID}"
+          agent_id: "promptfoo-judge"
+          prompt_version: "testing/promptfoo_judge@v1"
+          temperature: 0.0
         transformResponse: "json.content || json.response"
 
 tests:

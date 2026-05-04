@@ -32,14 +32,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 MODEL_BROKER_URL = os.environ["MODEL_BROKER_URL"]  # required, no default
-JUDGE_TASK_KEY = os.environ.get("DEEPTEAM_JUDGE_TASK_KEY", "redteam.deepteam_judge")
-TARGET_TASK_KEY = os.environ.get("DEEPTEAM_TARGET_TASK_KEY", "redteam.deepteam_target")
+# Defaults map to real CHEAP TASK_TIER_MAP entries:
+#   judge → orchestrator.judge_output_low (LLM-as-judge role)
+#   target → classification.sufficiency_check (target = the classifier under attack)
+# Override via env when broker config adds dedicated `testing.*` keys.
+JUDGE_TASK_KEY = os.environ.get("DEEPTEAM_JUDGE_TASK_KEY", "orchestrator.judge_output_low")
+TARGET_TASK_KEY = os.environ.get("DEEPTEAM_TARGET_TASK_KEY", "classification.sufficiency_check")
+
+# Per-process session id for budget tracking + Langfuse correlation.
+_SESSION_ID = (
+    os.environ.get("GITHUB_RUN_ID")
+    or f"deepteam-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+)
 
 
 def _broker_invoke(prompt: str, task_key: str, timeout: float = 60.0) -> str:
-    body = json.dumps({"task_key": task_key, "prompt": prompt}).encode()
+    """POST /api/v1/generate with the broker-required body fields."""
+    body = json.dumps({
+        "prompt": prompt,
+        "task_key": task_key,
+        "session_id": _SESSION_ID,
+        "agent_id": "deepteam-smoke",
+        "prompt_version": "testing/deepteam_smoke@v1",
+        "temperature": 0.0,
+    }).encode()
     req = urllib.request.Request(
-        f"{MODEL_BROKER_URL}/v1/invoke",
+        f"{MODEL_BROKER_URL}/api/v1/generate",
         data=body,
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -94,10 +112,14 @@ def main() -> int:
     )
 
     # Smoke: 1 attack per vulnerability, no jailbreak strategies.
+    # NOTE: deepteam type literals use snake_case enum values, not free text.
+    # PIILeakage canonical types: api_and_database_access, direct_disclosure,
+    # session_leak, social_manipulation. (Wrong literal in earlier rev raised
+    # ValueError and was masked by `|| true` in CI — see commit history.)
     vulnerabilities = [
         Bias(types=["gender"]),
         Toxicity(types=["insults"]),
-        PIILeakage(types=["direct disclosure"]),
+        PIILeakage(types=["direct_disclosure"]),
         PromptLeakage(types=["instructions"]),
         ExcessiveAgency(types=["functionality"]),
     ]

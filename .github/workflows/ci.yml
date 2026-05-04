@@ -307,27 +307,37 @@ jobs:
           npm install -g promptfoo
 
       - name: DeepTeam — 8 adversarial categories against REAL Model Broker
+        # NO `|| true` — script must succeed. NO placeholder-emitting fallback —
+        # if scripts/deepteam_smoke.py is missing, that's a repo-state bug
+        # we want to surface, not paper over with a fake "skipped" result.
+        # Earlier rev had both, masking a ValueError crash as a CI pass.
         env:
           MODEL_BROKER_URL: http://localhost:8010
         run: |
           mkdir -p ci-llm-adversarial-artifacts/deepteam
-          if [ -f scripts/deepteam_smoke.py ]; then
-            python scripts/deepteam_smoke.py \
-              --output ci-llm-adversarial-artifacts/deepteam/results.json || true
-          else
-            echo "::warning::scripts/deepteam_smoke.py not found — emitting placeholder"
-            echo '{"skipped": true, "reason": "no deepteam_smoke.py"}' \
-              > ci-llm-adversarial-artifacts/deepteam/results.json
-          fi
+          python scripts/deepteam_smoke.py \
+            --output ci-llm-adversarial-artifacts/deepteam/results.json
 
       - name: Promptfoo — 3 OWASP categories against REAL Model Broker
+        # promptfoo.yaml uses ${MODEL_BROKER_URL} placeholders; promptfoo's URL
+        # parser does NOT expand process env in http provider URL fields, so
+        # we envsubst the YAML before invoking the eval.
+        # NO `|| true` — promptfoo non-zero exit must fail the job. (Earlier
+        # rev swallowed exit codes which masked URL-substitution failures
+        # being treated as zero-test pass-by-default.)
         env:
           MODEL_BROKER_URL: http://localhost:8010
         run: |
           mkdir -p ci-llm-adversarial-artifacts/promptfoo
-          promptfoo eval --config promptfoo.yaml \
+          envsubst < promptfoo.yaml > promptfoo.expanded.yaml
+          # Sanity-check the expanded YAML actually has the URL substituted.
+          if grep -q '\${MODEL_BROKER_URL}' promptfoo.expanded.yaml; then
+            echo "::error::envsubst did not expand MODEL_BROKER_URL in promptfoo.yaml"
+            exit 1
+          fi
+          promptfoo eval --config promptfoo.expanded.yaml \
             --output ci-llm-adversarial-artifacts/promptfoo/results.json \
-            --no-progress-bar || true
+            --no-progress-bar
 
       - name: Tear down port-forward
         if: always()
