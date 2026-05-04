@@ -21,17 +21,23 @@
 #
 # Then edit the GCP_* variables below to match.
 
-set -euo pipefail
+set -eo pipefail
 
 REPO="${1:-AssessorFlow-ISS/classifier-agent}"
 GCP_PROJECT="thet-integration-af"
 
 # ── GCP secret name  →  GitHub repo secret name ─────────────────────────
+# Parallel arrays (not associative — works with bash 3.2 on macOS).
 # Edit these mappings to match your GCP secret naming.
-declare -A SECRET_MAP=(
-  ["orchestrator-db-password"]="ORCHESTRATOR_DB_PASSWORD"
-  ["langfuse-public-key"]="LANGFUSE_PUBLIC_KEY"
-  ["langfuse-secret-key"]="LANGFUSE_SECRET_KEY"
+GCP_NAMES=(
+  "af-smoke-db-password"
+  "langfuse-prod-public-key"
+  "langfuse-prod-secret-key"
+)
+GH_NAMES=(
+  "ORCHESTRATOR_DB_PASSWORD"
+  "LANGFUSE_PUBLIC_KEY"
+  "LANGFUSE_SECRET_KEY"
 )
 
 # ── Prereq checks ───────────────────────────────────────────────────────
@@ -56,9 +62,11 @@ echo ""
 # ── Verify each GCP secret exists ───────────────────────────────────────
 echo "▶ Verifying source secrets in GCP..."
 missing=()
-for gcp_name in "${!SECRET_MAP[@]}"; do
+for i in "${!GCP_NAMES[@]}"; do
+  gcp_name="${GCP_NAMES[$i]}"
+  gh_name="${GH_NAMES[$i]}"
   if gcloud secrets describe "$gcp_name" --project="$GCP_PROJECT" >/dev/null 2>&1; then
-    echo "  ✓ ${gcp_name} → ${SECRET_MAP[$gcp_name]}"
+    echo "  ✓ ${gcp_name} → ${gh_name}"
   else
     echo "  ✗ ${gcp_name} NOT FOUND in ${GCP_PROJECT}"
     missing+=("$gcp_name")
@@ -72,18 +80,18 @@ if [ ${#missing[@]} -gt 0 ]; then
   echo "Available secrets in ${GCP_PROJECT}:"
   gcloud secrets list --project="$GCP_PROJECT" --format='value(name)' | sed 's/^/  /'
   echo ""
-  echo "Edit the SECRET_MAP at the top of this script to match the actual names, then re-run."
+  echo "Edit GCP_NAMES at the top of this script to match the actual names, then re-run."
   exit 1
 fi
 echo ""
 
 # ── Pull each secret value and push to GH ────────────────────────────────
 echo "▶ Pushing secrets to ${REPO}..."
-for gcp_name in "${!SECRET_MAP[@]}"; do
-  gh_name="${SECRET_MAP[$gcp_name]}"
+for i in "${!GCP_NAMES[@]}"; do
+  gcp_name="${GCP_NAMES[$i]}"
+  gh_name="${GH_NAMES[$i]}"
   printf "  %s → %s ... " "$gcp_name" "$gh_name"
 
-  # Pull from GCP Secret Manager (latest version)
   value=$(gcloud secrets versions access latest \
     --secret="$gcp_name" \
     --project="$GCP_PROJECT" 2>/dev/null) || {
@@ -91,7 +99,6 @@ for gcp_name in "${!SECRET_MAP[@]}"; do
       exit 1
     }
 
-  # Push to GH repo secret (overwrites if exists)
   printf '%s' "$value" | gh secret set "$gh_name" -R "$REPO" --body - >/dev/null
   echo "OK"
 done

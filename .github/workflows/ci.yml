@@ -141,25 +141,31 @@ jobs:
           pip install -e ".[dev]"
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
       - name: pytest with coverage gate (>=90%)
-        # Skip tests that import af_shared symbols not in the vendored shim
-        # (af_shared.adapters.* and af_shared.pubsub.*). These pass locally
-        # where the full assessorflow/shared package is installed; CI uses
-        # the minimal vendor/af_shared shim for runtime types only.
-        # Once SHARED_REPO_PAT is provisioned and pip-install replaces the
-        # shim, drop these --ignore flags.
+        # Vendor shim (vendor/af_shared/) now provides adapters.factory +
+        # pubsub.agent_subscriber + adapters.stubs.tracing_stub, so the 5
+        # tests that previously had to be --ignore'd can now run in CI:
+        #   - tests/test_pubsub_adapter.py
+        #   - tests/test_api.py
+        #   - tests/test_main_adapter_wiring.py
+        #   - tests/test_main_handler.py
+        #   - tests/test_tracing_wiring.py
+        #
+        # tests/adversarial and tests/eval are still --ignore'd here only
+        # because they have their own dedicated CI cards (llm-deepteam,
+        # llm-promptfoo, llm-quality-deepeval) which exercise them
+        # against the real af-platform Model Broker. Running them inside
+        # the unit-tests job would double-bill broker calls.
+        #
+        # Coverage gate restored to 90% — was =0 only while shim was
+        # incomplete. Per pyproject.toml addopts.
         run: |
           pytest tests/ -v --tb=short \
             --ignore=tests/adversarial \
             --ignore=tests/eval \
-            --ignore=tests/test_pubsub_adapter.py \
-            --ignore=tests/test_api.py \
-            --ignore=tests/test_main_adapter_wiring.py \
-            --ignore=tests/test_main_handler.py \
-            --ignore=tests/test_tracing_wiring.py \
             --cov=src/classification_agent \
             --cov-report=term-missing \
             --cov-report=xml \
-            --cov-fail-under=0
+            --cov-fail-under=90
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -227,9 +233,12 @@ jobs:
           done
 
       - name: Install package + DeepEval
+        # NO `||` fallback. If `.[dev,eval]` extra is missing, that's a
+        # packaging bug we want to surface, not paper over with a degraded
+        # install. Earlier rev silently degraded to `.[dev] deepeval`.
         run: |
           pip install --upgrade pip
-          pip install -e ".[dev,eval]" || pip install -e ".[dev]" deepeval
+          pip install -e ".[dev,eval]"
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
 
       - name: DeepEval — 4 quality metrics against REAL Model Broker
@@ -257,8 +266,85 @@ jobs:
           name: deepeval-report
           path: ci-llm-artifacts/
 
-  llm-adversarial:
-    name: LLM — DeepTeam + Promptfoo
+  # ──────────────────────────────────────────────────────────────────
+  # llm-deepteam and llm-promptfoo run in parallel after unit-tests.
+  # Earlier rev bundled both into one llm-adversarial job, which meant
+  # a DeepTeam crash skipped Promptfoo entirely and we got no signal on
+  # the LLM-rubric path. Splitting them gives us independent green/red
+  # signals for each red-team tool.
+  # ──────────────────────────────────────────────────────────────────
+
+  llm-deepteam:
+    name: LLM — DeepTeam (red-team adversarial)
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.CLUSTER }}
+          location: ${{ env.CLUSTER_LOCATION }}
+
+      - run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Port-forward Model Broker
+        run: |
+          kubectl port-forward -n af-platform svc/model-broker 8010:8000 > /tmp/pf-mb.log 2>&1 &
+          echo $! > /tmp/pf-mb.pid
+          for i in 1 2 3 4 5; do
+            if curl -sf http://localhost:8010/health > /dev/null 2>&1; then
+              echo "port-forward ready"; break
+            fi
+            sleep 2
+          done
+
+      - name: Install package + DeepTeam
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]" deepteam
+          echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
+
+      - name: DeepTeam — vulnerability categories against REAL Model Broker
+        # NO `|| true` — script must succeed. NO placeholder-emitting fallback —
+        # script absence is a repo-state bug, not a pass.
+        # DEEPTEAM_VULNS=smoke (1 vuln, ~1-2 min) is the CI default; set =full
+        # to run all 8 vulnerabilities (~10 min) when you need the wide test.
+        env:
+          MODEL_BROKER_URL: http://localhost:8010
+          DEEPTEAM_VULNS: smoke
+        run: |
+          mkdir -p ci-deepteam-artifacts
+          python scripts/deepteam_smoke.py \
+            --output ci-deepteam-artifacts/results.json
+
+      - name: Tear down port-forward
+        if: always()
+        run: |
+          [ -f /tmp/pf-mb.pid ] && kill "$(cat /tmp/pf-mb.pid)" 2>/dev/null || true
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepteam-report
+          path: ci-deepteam-artifacts/
+
+  llm-promptfoo:
+    name: LLM — Promptfoo (3 OWASP non-overlapping)
     runs-on: ubuntu-latest
     needs: [unit-tests]
     permissions:
@@ -299,35 +385,28 @@ jobs:
             sleep 2
           done
 
-      - name: Install package + DeepTeam + promptfoo
-        run: |
-          pip install --upgrade pip
-          pip install -e ".[dev]" deepteam
-          echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
-          npm install -g promptfoo
+      - name: Install promptfoo
+        run: npm install -g promptfoo
 
-      - name: DeepTeam — 8 adversarial categories against REAL Model Broker
+      - name: Promptfoo — 3 OWASP categories (LLM05/LLM08/LLM10, non-overlapping)
+        # promptfoo.yaml uses ${MODEL_BROKER_URL} placeholders; promptfoo's URL
+        # parser does NOT expand process env in http provider URL fields, so
+        # we envsubst the YAML before invoking the eval.
+        # NO `|| true` — promptfoo non-zero exit must fail the job. The
+        # envsubst-guard exits 1 if any ${VAR} is left unexpanded, so a
+        # silent URL-parse pass-by-default cannot recur.
         env:
           MODEL_BROKER_URL: http://localhost:8010
         run: |
-          mkdir -p ci-llm-adversarial-artifacts/deepteam
-          if [ -f scripts/deepteam_smoke.py ]; then
-            python scripts/deepteam_smoke.py \
-              --output ci-llm-adversarial-artifacts/deepteam/results.json || true
-          else
-            echo "::warning::scripts/deepteam_smoke.py not found — emitting placeholder"
-            echo '{"skipped": true, "reason": "no deepteam_smoke.py"}' \
-              > ci-llm-adversarial-artifacts/deepteam/results.json
+          mkdir -p ci-promptfoo-artifacts
+          envsubst < promptfoo.yaml > promptfoo.expanded.yaml
+          if grep -q '\${MODEL_BROKER_URL}' promptfoo.expanded.yaml; then
+            echo "::error::envsubst did not expand MODEL_BROKER_URL in promptfoo.yaml"
+            exit 1
           fi
-
-      - name: Promptfoo — 3 OWASP categories against REAL Model Broker
-        env:
-          MODEL_BROKER_URL: http://localhost:8010
-        run: |
-          mkdir -p ci-llm-adversarial-artifacts/promptfoo
-          promptfoo eval --config promptfoo.yaml \
-            --output ci-llm-adversarial-artifacts/promptfoo/results.json \
-            --no-progress-bar || true
+          promptfoo eval --config promptfoo.expanded.yaml \
+            --output ci-promptfoo-artifacts/results.json \
+            --no-progress-bar
 
       - name: Tear down port-forward
         if: always()
@@ -337,8 +416,8 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: llm-adversarial-report
-          path: ci-llm-adversarial-artifacts/
+          name: promptfoo-report
+          path: ci-promptfoo-artifacts/
 
   dast:
     name: Security — DAST (ZAP baseline)
@@ -355,11 +434,15 @@ jobs:
           pip install -e ".[dev]"
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
 
-      - name: Start DAST target app on :8000
-        # scripts/dast_target_app.py is a minimal FastAPI mirror of the
-        # classifier's HTTP surface (/health, /ready, /invoke). Avoids the
-        # main app's deep af_shared.adapters dependencies which aren't in
-        # the vendored shim. ZAP spider only needs the routes to exist.
+      - name: Start HTTP surface on :8000 for ZAP baseline
+        # scripts/dast_target_app.py mirrors the classifier's route shapes
+        # (/, /health, /ready, /classify) so ZAP can scan HTTP-layer
+        # security (headers, methods, error disclosure). The real app
+        # imports af_shared.adapters.factory which is not in the vendored
+        # shim — that gap is tracked debt (PAT install of
+        # assessorflow/shared). ZAP does NOT score classification logic
+        # or LLM behavior; those are exercised by DeepEval/DeepTeam/
+        # Promptfoo against the real af-platform Model Broker.
         run: |
           nohup uvicorn scripts.dast_target_app:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
           echo $! > /tmp/app.pid
@@ -441,7 +524,8 @@ jobs:
       - unit-tests
       - integration-tests
       - llm-quality-deepeval
-      - llm-adversarial
+      - llm-deepteam
+      - llm-promptfoo
       - dast
       - build-container
     if: always()
@@ -466,7 +550,8 @@ jobs:
             echo "| Automated — unit | pytest + cov>=90% | ${{ needs.unit-tests.result }} |"
             echo "| Automated — integration | pytest | ${{ needs.integration-tests.result }} |"
             echo "| LLM — quality | DeepEval | ${{ needs.llm-quality-deepeval.result }} |"
-            echo "| LLM — adversarial | DeepTeam + Promptfoo | ${{ needs.llm-adversarial.result }} |"
+            echo "| LLM — adversarial (red-team) | DeepTeam | ${{ needs.llm-deepteam.result }} |"
+            echo "| LLM — adversarial (OWASP) | Promptfoo | ${{ needs.llm-promptfoo.result }} |"
             echo "| Security — DAST | ZAP baseline | ${{ needs.dast.result }} |"
             echo "| Container | Docker + Trivy | ${{ needs.build-container.result }} |"
             echo ""
@@ -484,7 +569,8 @@ jobs:
       - unit-tests
       - integration-tests
       - llm-quality-deepeval
-      - llm-adversarial
+      - llm-deepteam
+      - llm-promptfoo
       - dast
       - build-container
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

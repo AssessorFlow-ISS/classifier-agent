@@ -2,13 +2,15 @@
 
 Drives a smoke-level golden replay (one representative case per scenario),
 collects all 9 drift-runner metrics, and OVERWRITES the canonical baseline
-at gs://thet-integration-af-assessorflow-materials/golden/baselines/baseline-classifier-agent.json.
+at gs://${GCS_BUCKET}/golden/baselines/baseline-classifier-agent.json.
 
-Triggered by .github/workflows/golden-rebaseline.yml (cron: every 90 days).
+Triggered by .github/workflows/golden-rebaseline.yml (weekly, Mon 14:00 SGT).
 
-Phase 5 will swap the in-process stub broker for the cluster-deployed real
-Model Broker via port-forward into af-golden namespace; the script signature
-stays the same.
+NO defaults: GCS_BUCKET, SCENARIO, MODEL_BROKER_URL, KS_URL must all be set
+by the caller. Each invoked drift_runner.py also requires its own env. Hard
+fail on any missing — there is no silent fallback in this script or its
+sub-process invocations. All scoring goes through real LLM judges via the
+Model Broker port-forward established by golden-rebaseline.yml.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-GCS_BUCKET = os.environ.get("GCS_BUCKET", "thet-integration-af-assessorflow-materials")
+GCS_BUCKET = os.environ["GCS_BUCKET"]  # required — no default
 AGENT_NAME = "classifier-agent"
 BASELINE_KEY = f"golden/baselines/baseline-{AGENT_NAME}.json"
 
@@ -40,7 +42,15 @@ def _run_drift(drift_kind: str, scratch_dir: Path) -> dict:
 
 
 def main() -> int:
-    scenario = os.environ.get("SCENARIO", "sufficient")
+    # SCENARIO is required — CI sets via inputs.scenario || 'sufficient'.
+    # No silent default in script: if CI forgets to pass it, fail loud.
+    try:
+        scenario = os.environ["SCENARIO"]
+    except KeyError as exc:
+        raise SystemExit(
+            "SCENARIO env var is required (set by golden-rebaseline.yml). "
+            "No script-level default — CI must pass it explicitly."
+        ) from exc
     print(f"[golden_rebaseline] scenario={scenario}", file=sys.stderr)
 
     scratch = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "golden-rebaseline"

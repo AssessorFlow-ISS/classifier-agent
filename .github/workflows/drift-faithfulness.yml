@@ -6,7 +6,7 @@ name: Drift — Faithfulness
 
 on:
   schedule:
-    - cron: '0 21 * * 0'   # weekly Mon 05:00 SGT (Sun 21:00 UTC)
+    - cron: '30 9 * * 1'   # weekly Mon 17:30 SGT (Mon 09:30 UTC) — 3-min stagger slot 1/9
   workflow_dispatch:
 
 permissions:

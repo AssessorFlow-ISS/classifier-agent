@@ -58,30 +58,86 @@ BASELINE_KEY = f"golden/baselines/baseline-{AGENT_NAME}.json"
 # Model Broker URL — required. CI sets via kubectl port-forward to af-platform.
 # No localhost default; missing env raises on first call.
 MODEL_BROKER_URL = os.environ["MODEL_BROKER_URL"]
-JUDGE_TASK_KEY = os.environ.get("DEEPEVAL_JUDGE_TASK_KEY", "drift.deepeval_judge")
+# Default to a real CHEAP LLM-judge task_key from the production TASK_TIER_MAP
+# (orchestrator.judge_output_low). Override via env when the broker config
+# adds a dedicated `testing.deepeval_judge` key (debt: tracked separately).
+JUDGE_TASK_KEY = os.environ.get("DEEPEVAL_JUDGE_TASK_KEY", "orchestrator.judge_output_low")
 
 _FIXTURE_DIR = Path(__file__).resolve().parent.parent / "tests" / "drift_fixtures"
+
+# Stable session_id for the duration of one drift_runner invocation. Used
+# as Model Broker's per-workflow budget tracking key and Langfuse session.
+_SESSION_ID = (
+    os.environ.get("GITHUB_RUN_ID")
+    or f"drift-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+)
 
 
 # ---------------------------------------------------------------------------
 # Model Broker judge — wraps Model Broker as a DeepEval LLM
 # ---------------------------------------------------------------------------
 
-def _broker_invoke(prompt: str, timeout: float = 90.0) -> str:
-    """Call Model Broker /v1/invoke. Hard-fails on any error — no fallback."""
-    body = json.dumps({"task_key": JUDGE_TASK_KEY, "prompt": prompt}).encode()
-    req = urllib.request.Request(
-        f"{MODEL_BROKER_URL}/v1/invoke",
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        payload = json.loads(resp.read().decode())
-    text = payload.get("content") or payload.get("response") or ""
-    if not isinstance(text, str):
-        text = json.dumps(text)
-    return text
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
+def _broker_invoke(prompt: str, timeout: float = 90.0, max_retries: int = 2) -> str:
+    """Call Model Broker /api/v1/generate.
+
+    The broker's GenerateRequest requires: prompt, task_key, session_id,
+    agent_id, prompt_version. session_id uses a per-process value so all
+    judge calls within one drift run share a budget bucket in Langfuse.
+
+    Robustness: retries on transient HTTP statuses (429/5xx) and network
+    errors with exponential backoff (1s, 2s); raises ValueError on empty
+    content; lets non-retryable errors propagate so DeepEval can decide
+    whether to fall back via its TypeError handler.
+    """
+    body = json.dumps({
+        "prompt": prompt,
+        "task_key": JUDGE_TASK_KEY,
+        "session_id": _SESSION_ID,
+        "agent_id": "drift-runner",
+        "prompt_version": "testing/drift_runner@v1",
+        "temperature": 0.0,
+    }).encode()
+
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            req = urllib.request.Request(
+                f"{MODEL_BROKER_URL}/api/v1/generate",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                payload = json.loads(resp.read().decode())
+            text = payload.get("content") or payload.get("response") or ""
+            if not isinstance(text, str):
+                text = json.dumps(text)
+            if not text.strip():
+                raise ValueError(
+                    f"broker returned empty content for task_key={JUDGE_TASK_KEY!r}"
+                )
+            return text
+        except urllib.error.HTTPError as e:
+            last_exc = e
+            if e.code in _RETRYABLE_STATUS and attempt < max_retries:
+                import time as _time
+                _time.sleep(2 ** attempt)
+                continue
+            raise
+        except urllib.error.URLError as e:
+            last_exc = e
+            if attempt < max_retries:
+                import time as _time
+                _time.sleep(2 ** attempt)
+                continue
+            raise
+
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("unreachable")
 
 
 def _build_judge():
@@ -101,10 +157,15 @@ def _build_judge():
         def get_model_name(self) -> str:
             return f"model-broker@{MODEL_BROKER_URL}"
 
-        def generate(self, prompt: str) -> str:
+        # DeepEval-3.9+ may pass `schema=<pydantic-class>` for structured
+        # output via generate_with_schema(). We accept and ignore it here —
+        # the broker returns JSON-best-effort text and DeepEval falls back
+        # to text parsing. Other kwargs (max_tokens, temperature) likewise
+        # tolerated to avoid TypeError under the wrapper's TypeError-fallback.
+        def generate(self, prompt: str, *args, **kwargs) -> str:  # noqa: ARG002
             return _broker_invoke(prompt)
 
-        async def a_generate(self, prompt: str) -> str:
+        async def a_generate(self, prompt: str, *args, **kwargs) -> str:  # noqa: ARG002
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, _broker_invoke, prompt)
 
