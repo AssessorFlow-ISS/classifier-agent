@@ -4,7 +4,7 @@ name: Drift — Bias
 
 on:
   schedule:
-    - cron: '0 8 * * 1'    # weekly Mon 16:00 SGT (Mon 08:00 UTC) — 5-min stagger slot 3/9
+    - cron: '36 9 * * 1'   # weekly Mon 17:36 SGT (Mon 09:36 UTC) — 3-min stagger slot 3/9
   workflow_dispatch:
 
 permissions:

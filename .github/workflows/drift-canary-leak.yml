@@ -6,7 +6,7 @@ name: Drift — Canary Leak
 
 on:
   schedule:
-    - cron: '20 8 * * 1'   # weekly Mon 16:20 SGT (Mon 08:20 UTC) — 5-min stagger slot 7/9
+    - cron: '48 9 * * 1'   # weekly Mon 17:48 SGT (Mon 09:48 UTC) — 3-min stagger slot 7/9
   workflow_dispatch:
 
 permissions:
