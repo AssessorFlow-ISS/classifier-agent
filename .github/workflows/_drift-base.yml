@@ -59,17 +59,20 @@ jobs:
       - name: Install gke-gcloud-auth-plugin
         run: gcloud components install gke-gcloud-auth-plugin --quiet
 
-      - name: Port-forward Model Broker + Knowledge Service
+      - name: Port-forward Model Broker (KS uses stub for drift)
+        # Drift testing exercises the LLM-judge surface. The classifier is
+        # invoked with `request.chunks` override which short-circuits the
+        # KS-fetch path, but search_policies + store_topics still call KS.
+        # We use the stub KS for those (no cluster roundtrip; KS would
+        # return 500 for synthetic workflow_ids that aren't in af_orchestrator).
+        # Model Broker IS the real cluster service — that's the point of the
+        # drift run: real LLM judge + real classifier LLM calls.
         run: |
           kubectl port-forward -n af-platform svc/model-broker 8010:8000 > /tmp/pf-mb.log 2>&1 &
           echo $! > /tmp/pf-mb.pid
-          kubectl port-forward -n af-platform svc/knowledge-service 8020:8020 > /tmp/pf-ks.log 2>&1 &
-          echo $! > /tmp/pf-ks.pid
-          # Wait for port-forwards to establish
           for i in 1 2 3 4 5; do
-            if curl -sf http://localhost:8010/health > /dev/null 2>&1 && \
-               curl -sf http://localhost:8020/health > /dev/null 2>&1; then
-              echo "port-forwards ready"
+            if curl -sf http://localhost:8010/health > /dev/null 2>&1; then
+              echo "port-forward ready"
               break
             fi
             sleep 2
@@ -85,23 +88,21 @@ jobs:
           # install of assessorflow/shared is wired up — see vendor/af_shared/)
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
 
-      - name: Run drift runner (real af-platform Model Broker + KS)
+      - name: Run drift runner (real Model Broker, stub KS)
         env:
           GCS_BUCKET: ${{ env.GCS_BUCKET }}
-          KNOWLEDGE_SERVICE_ADAPTER: http
+          KNOWLEDGE_SERVICE_ADAPTER: stub
           MODEL_BROKER_ADAPTER: http
-          KS_URL: http://localhost:8020
           MODEL_BROKER_URL: http://localhost:8010
         run: |
           python scripts/drift_runner.py \
             --drift-kind ${{ inputs.drift_kind }} \
             --artifact-dir ./drift-artifacts
 
-      - name: Tear down port-forwards
+      - name: Tear down port-forward
         if: always()
         run: |
           [ -f /tmp/pf-mb.pid ] && kill "$(cat /tmp/pf-mb.pid)" 2>/dev/null || true
-          [ -f /tmp/pf-ks.pid ] && kill "$(cat /tmp/pf-ks.pid)" 2>/dev/null || true
 
       - name: Upload artifacts
         if: always()
