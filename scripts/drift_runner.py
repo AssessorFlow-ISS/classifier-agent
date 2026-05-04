@@ -217,11 +217,21 @@ def _build_judge():
         #
         # If schema is None, return free-form text as before.
         def _structured(self, prompt: str, schema):
+            text = ""
             try:
                 json_schema = _clean_schema_for_gemini(schema.model_json_schema())
                 text = _broker_invoke(prompt, response_schema=json_schema)
                 parsed = json.loads(text)
-                return schema(**parsed)
+                result = schema(**parsed)
+                # Trace successful structured generation so we can correlate
+                # which schemas the metric actually invoked + what content
+                # came back. Truncated to keep log volume bounded.
+                print(
+                    f"[drift_runner debug] _structured OK schema={schema.__name__!r} "
+                    f"raw_text_preview={text[:300]!r} parsed_preview={str(parsed)[:300]!r}",
+                    file=sys.stderr,
+                )
+                return result
             except json.JSONDecodeError as e:
                 print(
                     f"[drift_runner debug] _structured JSONDecodeError schema={schema.__name__!r}: "
@@ -427,6 +437,22 @@ def _deepeval_quality_score(drift_kind: str) -> float:
     )
     metric = metric_cls(threshold=PASS_THRESHOLDS[drift_kind], model=judge, async_mode=False)
     metric.measure(case)
+    # Diagnostic dump for answer-relevancy specifically so we can see what
+    # statements the judge extracted and what verdicts it assigned. The
+    # score-0.0 root cause is whichever attribute is empty: empty statements
+    # means the schema-honor path never extracted anything; empty verdicts
+    # means statements were extracted but per-statement classification
+    # failed; populated statements + populated verdicts but score 0 means
+    # every verdict was "no" / "idk".
+    if drift_kind == "answer-relevancy":
+        print(
+            f"[drift_runner debug] AnswerRelevancyMetric score={metric.score!r} "
+            f"actual_output_preview={actual_output[:200]!r} "
+            f"statements={getattr(metric, 'statements', 'NOT_SET')!r} "
+            f"verdicts={getattr(metric, 'verdicts', 'NOT_SET')!r} "
+            f"reason={getattr(metric, 'reason', 'NOT_SET')!r}",
+            file=sys.stderr,
+        )
     return float(metric.score or 0.0)
 
 
