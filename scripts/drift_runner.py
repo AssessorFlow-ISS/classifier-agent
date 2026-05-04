@@ -404,6 +404,22 @@ def _deepeval_quality_score(drift_kind: str) -> float:
     response = _classifier_run(fixture["chunks"])
     topics = _topic_terms(response)
     csv_output = ", ".join(topics) if topics else "(no topics returned)"
+    # Dump the raw classifier response so when actual_output ends up as
+    # "(no topics returned)" we can see whether (a) sufficiency_check came
+    # back insufficient and topics were never extracted, (b) topics field
+    # is None, or (c) topics.topics is an empty list. This is the layer
+    # below the LLM-judge — the metric scoring 0 is correct given empty
+    # actual_output; the real problem is the classifier producing no
+    # topics from the OOP fixture chunks.
+    if drift_kind == "answer-relevancy":
+        print(
+            f"[drift_runner debug] classifier response type={type(response).__name__} "
+            f"sufficiency_check={getattr(response, 'sufficiency_check', 'NOT_SET')!r} "
+            f"topics={getattr(response, 'topics', 'NOT_SET')!r} "
+            f"topics_field_dump={str(getattr(response, 'topics', 'NONE'))[:500]!r} "
+            f"_topic_terms_returned={topics!r}",
+            file=sys.stderr,
+        )
     # AnswerRelevancyMetric breaks actual_output into atomic statements and
     # scores each on whether it is a relevant ANSWER to the input query.
     # The bare CSV term list has no extractable statements; meta-prose like
