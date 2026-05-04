@@ -105,7 +105,7 @@ jobs:
           ASSESSOR_EMAIL: ${{ inputs.assessor_email || 'daleleung76@gmail.com' }}
           JUDGE_MODEL: gemini-2.0-flash
         run: |
-          envsubst < .github/workflows/e2e-golden-job.yaml | kubectl apply -f -
+          envsubst < infra/e2e-golden-job.yaml | kubectl apply -f -
 
       - name: Wait for Job + stream logs
         env:
