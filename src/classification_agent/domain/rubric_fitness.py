@@ -25,7 +25,7 @@ from classification_agent.ports.model_broker_port import ModelBrokerPort
 logger = structlog.get_logger(__name__)
 
 _RUBRIC_FITNESS_TASK_KEY = "classification.rubric_fitness"
-_PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "rubric_fitness.yaml"
+_PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "rubric_fitness"
 _, _RUBRIC_FITNESS_TEMPLATE = load_prompt(_PROMPT_PATH)
 
 

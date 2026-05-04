@@ -1,0 +1,7 @@
+template: topic_extraction
+current: v1
+history:
+  - version: v1
+    file: v1.yaml
+    body_preserved: true
+    summary: "Initial committed version of topic_extraction prompt; see frontmatter for details"

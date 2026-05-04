@@ -1,0 +1,7 @@
+template: sufficiency_check
+current: v2
+history:
+  - version: v2
+    file: v2.yaml
+    body_preserved: true
+    summary: "Initial committed version of sufficiency_check prompt; see frontmatter for details"

@@ -35,7 +35,7 @@ class GuardrailBlockedError(RuntimeError):
 
 
 _TASK_KEY = "classification.topic_extraction"
-_PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "topic_extraction.yaml"
+_PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "topic_extraction"
 _, _TOPIC_EXTRACTION_TEMPLATE = load_prompt(_PROMPT_PATH)
 
 
