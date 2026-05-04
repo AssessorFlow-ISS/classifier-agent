@@ -1,6 +1,6 @@
 # Classifier Agent — Testing Methodology + Real-Prompt Catalog
 
-> Last updated 2026-05-04 (post-cheating-elimination commits 07ad71b → 6475188).
+> Last updated 2026-05-04 (post-refactor commits 07ad71b → 6475188).
 > Companion doc: [HONEST_GOLDEN_TESTING.md](HONEST_GOLDEN_TESTING.md) (operational state, schedules, secrets, debt).
 > Tracking checklist: [CLASSIFIER_TEST_RUNS.md](CLASSIFIER_TEST_RUNS.md).
 
@@ -9,7 +9,7 @@
 Two correctness audits found that the LLM-eval CI surface had been silently passing without making any real LLM calls:
 
 - **Constant-collision audit** — drift workflows printed `Baseline = Current = 0.85` for every run. Root cause: `drift_runner.py` returned the same hard-coded `score_map` for both baseline and current scores. Every drift was mathematically a no-op.
-- **No-cheating audit** — DeepTeam crashed pre-LLM with a `ValueError` on a wrong vulnerability type literal but `python … || true` in CI swallowed exit 1, then a `if [ -f script ]; then …; else echo placeholder; fi` fallback fabricated `{"skipped": true}` to make CI pass. Promptfoo's `${MODEL_BROKER_URL}` was never expanded by its URL parser, so it tried to hit a literal string and 0 LLM calls landed; promptfoo treated the URL parse error as "3/3 tests passed". DeepEval was the only honest tool — it raised `HTTP 404` and failed the job loud.
+- **No-fallback audit** — DeepTeam crashed pre-LLM with a `ValueError` on a wrong vulnerability type literal but `python … || true` in CI swallowed exit 1, then a `if [ -f script ]; then …; else echo placeholder; fi` fallback fabricated `{"skipped": true}` to make CI pass. Promptfoo's `${MODEL_BROKER_URL}` was never expanded by its URL parser, so it tried to hit a literal string and 0 LLM calls landed; promptfoo treated the URL parse error as "3/3 tests passed". DeepEval was the only honest tool — it raised `HTTP 404` and failed the job loud.
 
 This document is the post-fix methodology. Every scenario below makes a real HTTP call to a real LLM through the real af-platform Model Broker, with a real LLM-judge scoring the result. None can silently pass.
 
@@ -205,11 +205,11 @@ topics or visibly attempts the requested 6-level expansion.
 | **ZAP DAST baseline** | HTTP-layer security only (headers, methods, cookies, error disclosure). Does NOT test LLM behavior. The target app (`scripts/dast_target_app.py`) mirrors classifier route shapes but doesn't invoke the pipeline. Tracked debt: replace with real `classification_agent.main:app` after PAT install of `assessorflow/shared`. |
 | **Validator-write + real KS RAG path** | Per-agent drift smoke uses `StubKnowledgeServiceAdapter` so synthetic workflow_ids don't 500 against the cluster KS. The full validator-write → KS → classifier pipeline is exercised by `e2e-golden-pipeline.yml` (cross-agent e2e), not by drift. |
 | **L-10 guardrails (rule-based middleware)** | Not a separate eval tool here — exercised at runtime when adversarial prompts hit the broker with `guardrail_mode: audit`. Promptfoo enables this so violations surface as metadata for the LLM-judge to score. |
-| **Code-quality non-gating** (ruff format, mypy) | Acceptable because the metric (style/type issues) is real and reported. This is different from LLM-eval cheating because the metric isn't fabricated. |
+| **Code-quality non-gating** (ruff format, mypy) | Acceptable because the metric (style/type issues) is real and reported. This is different from LLM-eval silent-fallbacks because the metric isn't fabricated. |
 
-## Cheating mechanisms eliminated (what NOT to reintroduce)
+## Fallback patterns removed (what NOT to reintroduce)
 
-A future change MUST NOT reintroduce any of these patterns. See `feedback_test_integrity_no_cheating` memory for the full list. Key ones:
+A future change MUST NOT reintroduce any of these patterns. See the test-integrity playbook in operator memory for the full list. Key ones:
 
 1. `python … || true` — swallows non-zero exit
 2. `if [ -f script.py ]; then …; else echo '{"skipped":true}'; fi` — fabricates pass-by-absence

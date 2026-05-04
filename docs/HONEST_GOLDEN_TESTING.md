@@ -7,7 +7,7 @@
 This repo (`AssessorFlow-ISS/classifier-agent`) was created as a CI/CD-tier sister of the production `assessorflow/classification-agent`. Two correctness audits drove a substantial overhaul:
 
 1. **Constant-collision audit (run #25291601980)** — drift workflows printed `Baseline = Current = 0.85`, `Delta = 0` for every run. Root cause: `scripts/drift_runner.py` returned the same hard-coded `score_map` dict for both the GCS-stored baseline AND the current-run scores. Drift detection was mathematically a no-op.
-2. **No-localhost / no-cheating audit** — PROD source carried 9 localhost defaults (`config.py`, `submission_client.py`, `model_broker_http.py`, `knowledge_service_http.py`, `progress_emitter.py`) and a `dev_password` fallback. A misconfigured deploy would silently route to a non-existent local socket. Adversarial test runners (DeepTeam, Promptfoo) used regex pattern-match judges instead of real LLM judges.
+2. **No-localhost / no-fallback audit** — PROD source carried 9 localhost defaults (`config.py`, `submission_client.py`, `model_broker_http.py`, `knowledge_service_http.py`, `progress_emitter.py`) and a `dev_password` fallback. A misconfigured deploy would silently route to a non-existent local socket. Adversarial test runners (DeepTeam, Promptfoo) used regex pattern-match judges instead of real LLM judges.
 
 Outcome: drift_runner rewritten with real DeepEval/DeepTeam LLM-judge calls; localhost defaults stripped repo-wide; new `e2e-golden-pipeline.yml` workflow added for true cross-agent validation.
 
@@ -19,7 +19,7 @@ Outcome: drift_runner rewritten with real DeepEval/DeepTeam LLM-judge calls; loc
 | **1 — Per-agent drift** (smoke) | 9× `drift-*.yml` + `golden-rebaseline.yml` | Single-agent: classifier topic-extractor invoked with synthetic chunks (override). DeepEval/DeepTeam LLM-judge scores response. Real Model Broker, **stub KS**. Catches LLM-judge regression, prompt drift, classifier behavior drift. **Does NOT exercise** validator-write, real KS read/write, L-10 guardrails, Pub/Sub orchestration. | ~$0.05 / drift | weekly Mon SGT, hourly stagger 05:00–13:00; rebaseline at 14:00 |
 | **2 — True end-to-end** | `e2e-golden-pipeline.yml` | Full 13-stage assessment driven via API server → real validator-agent writes chunks to KS → real classifier reads them via KS gRPC → Q&A Gen → Evaluator → Reporting. Real Pub/Sub, real L-10 guardrails, real Langfuse trace publish. Per-agent scores read from Langfuse. **This is the only path that exercises validator-write + real RAG retrieval + L-10.** | ~$0.10–0.30 / run | weekly Mon 14:00 SGT (06:00 UTC), workflow_dispatch with `{insufficient, sufficient}` |
 
-## Per-tool real-LLM call audit (no cheating)
+## Per-tool real-LLM call audit (no fallback)
 
 | Tool | Where wired | Judge type | Localhost in source? |
 |---|---|---|---|
