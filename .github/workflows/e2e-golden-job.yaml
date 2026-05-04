@@ -1,0 +1,110 @@
+# K8s Job manifest for the golden e2e evaluation, run INSIDE af-golden.
+#
+# Why this beats the previous port-forward design:
+# - No external port-forward (no need for cloudsql-proxy/api-server proxies)
+# - Cluster-internal trust (DB, Pub/Sub, services all reachable via .svc.cluster.local)
+# - Auth: uses GOLDEN_ASSESSOR_EMAIL (real af_identity.users record) →
+#   submission-service's assessor-context middleware resolves it correctly
+# - Blast radius isolated: af-golden has its own broker, agents, Redis,
+#   submission-service, etc.; only af_identity.users is shared (read-only lookup)
+#
+# Env-injection: the GH Actions workflow does an `envsubst` pass on this
+# manifest before kubectl apply, replacing $GH_RUN_ID, $GOLDEN_SCENARIO,
+# $JUDGE_MODEL, $ASSESSOR_EMAIL with the values the runner provides
+# (and pulls $ORCHESTRATOR_DB_PASSWORD / $LANGFUSE_* from cluster Secrets).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: golden-e2e-${GH_RUN_ID}
+  namespace: af-golden
+  labels:
+    app: golden-e2e
+    purpose: e2e-evaluation
+    run_id: "${GH_RUN_ID}"
+spec:
+  ttlSecondsAfterFinished: 3600   # auto-cleanup after 1h
+  backoffLimit: 0                  # no retries; single attempt
+  template:
+    metadata:
+      labels:
+        app: golden-e2e
+        run_id: "${GH_RUN_ID}"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: eval
+          image: python:3.12-slim
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              echo "=== install deps ==="
+              pip install --quiet --no-cache-dir \
+                requests httpx google-cloud-storage asyncpg deepeval==3.9.9
+              echo "=== run golden_workflow_eval.py ==="
+              mkdir -p /tmp/baselines
+              python /app/golden_workflow_eval.py
+              echo "=== upload baselines to GCS ==="
+              for f in /tmp/baselines/*.json; do
+                [ -f "$f" ] && gsutil cp "$f" "gs://${GCS_BUCKET}/golden/e2e-baselines/${GH_RUN_ID}/$(basename $f)" || true
+              done
+          env:
+            - name: GH_RUN_ID
+              value: "${GH_RUN_ID}"
+            - name: API_SERVER_URL
+              value: "http://api-server-golden:8001"
+            - name: GOLDEN_ASSESSOR_EMAIL
+              value: "${ASSESSOR_EMAIL}"
+            - name: ORCHESTRATOR_DB_HOST
+              value: "10.115.0.3"
+            - name: ORCHESTRATOR_DB_PORT
+              value: "5432"
+            - name: ORCHESTRATOR_DB_NAME
+              value: "af_orchestrator_golden"
+            - name: ORCHESTRATOR_DB_USER
+              value: "assessorflow"
+            - name: ORCHESTRATOR_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-credentials
+                  key: DB_PASSWORD
+            - name: LANGFUSE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: langfuse-credentials
+                  key: LANGFUSE_HOST
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: langfuse-credentials
+                  key: LANGFUSE_PUBLIC_KEY
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: langfuse-credentials
+                  key: LANGFUSE_SECRET_KEY
+            - name: GCS_BUCKET
+              value: "thet-integration-af-assessorflow-materials"
+            - name: GOLDEN_SCENARIO
+              value: "${GOLDEN_SCENARIO}"
+            - name: BASELINE_DIR
+              value: "/tmp/baselines"
+            - name: WORKFLOW_TIMEOUT_S
+              value: "900"
+            - name: DEEPEVAL_JUDGE_MODEL
+              value: "${JUDGE_MODEL}"
+          volumeMounts:
+            - name: eval-script
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+      volumes:
+        - name: eval-script
+          configMap:
+            name: golden-e2e-script-${GH_RUN_ID}
+            defaultMode: 0755

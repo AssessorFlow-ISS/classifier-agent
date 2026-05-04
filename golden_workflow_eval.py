@@ -106,11 +106,22 @@ AGENT_PATTERNS = {
 
 
 def _api(method: str, path: str, body: dict | None = None) -> dict:
-    """Call the golden API server."""
+    """Call the golden API server.
+
+    The api-server's UNAUTHENTICATED guard requires either an
+    X-Forwarded-Email header (set by oauth2-proxy in production) or an
+    assessor_id field in the body. The runner port-forwards directly to
+    the pod, bypassing oauth2-proxy, so we pass X-Forwarded-Email
+    explicitly. Override via GOLDEN_ASSESSOR_EMAIL env if needed.
+    """
     url = f"{API_SERVER}{path}"
     data = json.dumps(body).encode() if body else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Content-Type", "application/json")
+    req.add_header(
+        "X-Forwarded-Email",
+        os.environ.get("GOLDEN_ASSESSOR_EMAIL", "golden-assessor@baseline.test"),
+    )
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read())
 

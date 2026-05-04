@@ -1,26 +1,31 @@
 name: E2E — Golden Pipeline (real validator-write + KS + classifier + …)
 
 # True end-to-end test that drives the full 13-stage assessment workflow
-# through every agent in the af-platform namespace. Unlike the per-agent
-# drift-* workflows (smoke; classifier-only with stub KS), this workflow
-# exercises:
-#   - real assessment creation via API server
-#   - real validator-agent: writes (potentially poisoned) chunks to KS
-#   - real classifier-agent: reads chunks via KS gRPC + classifies
-#   - real Q&A Gen, Evaluator, Reporting (all in af-platform)
-#   - real Pub/Sub orchestration
-#   - real L-10 guardrails (when triggered by adversarial chunks)
-#   - real Langfuse trace publishing — eval scores read back from Langfuse
+# through every agent in the af-golden namespace (isolated test stack).
 #
-# Each run scores per-agent traces with DeepEval and writes a fresh
-# baseline. RAG-poisoning + canary-leak validation lives here because
-# only this workflow involves the real validator-write path.
+# DESIGN: Option 3 — runs as a Kubernetes Job INSIDE the cluster.
+# - No port-forwards (was blocked by missing cloudsql-proxy svc + auth)
+# - Cluster-internal trust: Job calls api-server-golden, KS-golden,
+#   model-broker-golden, etc. via .svc.cluster.local
+# - Auth: GOLDEN_ASSESSOR_EMAIL must be a real af_identity.users row
+#   (`is_active=true`); submission-service-golden middleware looks it up
+# - Blast radius isolated to af-golden (separate broker, agents, KS,
+#   submission-service, Redis, DB schema). Only af_identity.users is
+#   shared (read-only lookup) — and we use a real assessor row, not a
+#   synthetic one, so no DB mutation needed.
 #
-# Cost: ~$0.10–0.30 per run (full workflow, ~5 min real LLM time).
+# COST: af-golden must be SCALED UP before this runs (12 deployments,
+# ~$1-3/hr while up). The workflow scales up at start, runs the Job,
+# scales back down. Total: ~10-15 min including scale-up wait.
+#
+# Each run scores per-agent traces with DeepEval. Baselines uploaded to
+# GCS at gs://thet-integration-af-assessorflow-materials/golden/e2e-baselines/<run-id>/
 
 on:
   schedule:
-    - cron: '0 6 * * 1'   # weekly Mon 14:00 SGT (Mon 06:00 UTC) — same slot as golden-rebaseline
+    # weekly Mon 14:50 SGT (06:50 UTC) — earliest slot in the
+    # weekly drift block (drifts 15:50–16:30 SGT follow this 6 min apart)
+    - cron: '50 6 * * 1'
   workflow_dispatch:
     inputs:
       scenario:
@@ -28,6 +33,10 @@ on:
         type: choice
         default: "insufficient"
         options: ["insufficient", "sufficient"]
+      assessor_email:
+        description: "Real af_identity.users email (must exist + is_active)"
+        type: string
+        default: "daleleung76@gmail.com"
 
 permissions:
   contents: read
@@ -43,18 +52,20 @@ env:
   GCP_SA: github-actions@thet-integration-af.iam.gserviceaccount.com
   CLUSTER: af-smoke-cluster
   CLUSTER_LOCATION: asia-southeast1-b
+  GOLDEN_NS: af-golden
+  GOLDEN_DEPLOYMENTS: |
+    api-server-golden classification-agent-golden evaluator-agent-golden
+    knowledge-service-golden model-broker-golden orchestrator-agent-golden
+    qna-generation-agent-golden redis-golden reporting-agent-golden
+    submission-service-golden validator-agent-golden web-research-agent-golden
 
 jobs:
   e2e:
-    name: E2E / classifier-agent (real validator-write + KS)
+    name: E2E / classifier-agent (af-golden, in-cluster Job)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - id: auth
         uses: google-github-actions/auth@v2
@@ -71,82 +82,96 @@ jobs:
 
       - run: gcloud components install gke-gcloud-auth-plugin --quiet
 
-      - name: Port-forward api-server + orchestrator-db + langfuse
-        # Three port-forwards: golden_workflow_eval.py creates a real
-        # assessment via api-server, polls af_orchestrator DB for status,
-        # and reads Langfuse traces for per-agent scoring.
+      - name: Scale af-golden UP
         run: |
-          kubectl port-forward -n af-platform svc/api-server 8001:8001 > /tmp/pf-api.log 2>&1 &
-          echo $! > /tmp/pf-api.pid
-          kubectl port-forward -n af-platform svc/cloudsql-proxy 15432:5432 > /tmp/pf-db.log 2>&1 &
-          echo $! > /tmp/pf-db.pid
-          kubectl port-forward -n af-observability svc/langfuse-web 3000:3000 > /tmp/pf-lf.log 2>&1 &
-          echo $! > /tmp/pf-lf.pid
-          for i in 1 2 3 4 5 6 7 8; do
-            if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
-              echo "api-server ready"; break
-            fi
-            sleep 3
+          for d in $GOLDEN_DEPLOYMENTS; do
+            kubectl scale deploy "$d" -n "$GOLDEN_NS" --replicas=1
           done
+          kubectl wait --for=condition=available deployment --all -n "$GOLDEN_NS" --timeout=300s
 
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -e ".[dev,eval]" deepeval deepteam
-          echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
-
-      - name: Run golden_workflow_eval.py (full e2e)
-        # All required envs explicit — golden_workflow_eval.py raises on
-        # any missing secret/URL after the lessons-learned hardening
-        # (was silent os.environ.get(..., default) — now os.environ[]).
+      - name: Create configMap (golden_workflow_eval.py)
         env:
-          API_SERVER_URL: http://localhost:8001
-          ORCHESTRATOR_DB_HOST: localhost
-          ORCHESTRATOR_DB_PORT: "15432"
-          ORCHESTRATOR_DB_NAME: af_orchestrator
-          ORCHESTRATOR_DB_USER: assessorflow
-          ORCHESTRATOR_DB_PASSWORD: ${{ secrets.ORCHESTRATOR_DB_PASSWORD }}
-          LANGFUSE_HOST: http://localhost:3000
-          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
-          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-          GCS_BUCKET: ${{ env.GCS_BUCKET }}
-          GOLDEN_SCENARIO: ${{ inputs.scenario || 'insufficient' }}
-          BASELINE_DIR: ${{ runner.temp }}/baselines
-          WORKFLOW_TIMEOUT_S: "600"
-          DEEPEVAL_JUDGE_MODEL: gemini-2.0-flash
+          GH_RUN_ID: ${{ github.run_id }}
         run: |
-          mkdir -p "${{ runner.temp }}/baselines"
-          python golden_workflow_eval.py
+          kubectl create configmap "golden-e2e-script-${GH_RUN_ID}" \
+            -n "$GOLDEN_NS" \
+            --from-file=golden_workflow_eval.py \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Tear down port-forwards
+      - name: Apply Job manifest
+        env:
+          GH_RUN_ID: ${{ github.run_id }}
+          GOLDEN_SCENARIO: ${{ inputs.scenario || 'insufficient' }}
+          ASSESSOR_EMAIL: ${{ inputs.assessor_email || 'daleleung76@gmail.com' }}
+          JUDGE_MODEL: gemini-2.0-flash
+        run: |
+          envsubst < .github/workflows/e2e-golden-job.yaml | kubectl apply -f -
+
+      - name: Wait for Job + stream logs
+        env:
+          GH_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -e
+          # Wait up to 25 min for the Job to complete (success or fail)
+          kubectl wait --for=condition=complete \
+            "job/golden-e2e-${GH_RUN_ID}" -n "$GOLDEN_NS" \
+            --timeout=1500s &
+          WAIT_PID=$!
+
+          # Stream pod logs in parallel; if Job fails we still see why
+          POD=$(kubectl get pods -n "$GOLDEN_NS" \
+            -l "run_id=${GH_RUN_ID}" \
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          while [ -z "$POD" ]; do
+            sleep 5
+            POD=$(kubectl get pods -n "$GOLDEN_NS" \
+              -l "run_id=${GH_RUN_ID}" \
+              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          done
+          echo "Streaming logs from pod: $POD"
+          kubectl logs -n "$GOLDEN_NS" -f "$POD" || true
+
+          wait "$WAIT_PID" || {
+            echo "::error::Job did not complete successfully"
+            kubectl describe "job/golden-e2e-${GH_RUN_ID}" -n "$GOLDEN_NS" || true
+            exit 1
+          }
+
+      - name: Scale af-golden DOWN
         if: always()
         run: |
-          for pid_file in /tmp/pf-api.pid /tmp/pf-db.pid /tmp/pf-lf.pid; do
-            [ -f "$pid_file" ] && kill "$(cat "$pid_file")" 2>/dev/null || true
+          for d in $GOLDEN_DEPLOYMENTS; do
+            kubectl scale deploy "$d" -n "$GOLDEN_NS" --replicas=0 || true
           done
+
+      - name: Cleanup Job + configMap
+        if: always()
+        env:
+          GH_RUN_ID: ${{ github.run_id }}
+        run: |
+          kubectl delete "job/golden-e2e-${GH_RUN_ID}" -n "$GOLDEN_NS" --ignore-not-found
+          kubectl delete "cm/golden-e2e-script-${GH_RUN_ID}" -n "$GOLDEN_NS" --ignore-not-found
 
       - name: Render summary
         if: always()
+        env:
+          GH_RUN_ID: ${{ github.run_id }}
         run: |
           {
-            echo "## E2E — Golden Pipeline / classifier-agent"
+            echo "## E2E — Golden Pipeline / classifier-agent (in-cluster Job)"
             echo ""
-            echo "Full 13-stage assessment workflow exercised in af-platform:"
+            echo "Full 13-stage assessment workflow exercised in af-golden:"
             echo "real assessment creation → validator-write to KS → classifier"
             echo "reads chunks via KS gRPC → Q&A Gen → Evaluator → Reporting."
             echo ""
             echo "**Scenario:** \`${{ inputs.scenario || 'insufficient' }}\`  "
-            echo "**Mode:** REAL all-agent e2e (not per-agent smoke)  "
-            echo "**Validator-write path:** EXERCISED (real chunks written to KS)  "
-            echo "**RAG/canary/poisoning testable:** YES (poisoned material → validator → KS → classifier observable)  "
+            echo "**Mode:** in-cluster Job (af-golden namespace, isolated stack)  "
+            echo "**Assessor identity:** \`${{ inputs.assessor_email || 'daleleung76@gmail.com' }}\`  "
+            echo "**Validator-write path:** EXERCISED (real chunks written to KS-golden)  "
+            echo "**RAG/canary/poisoning testable:** YES  "
             echo ""
-            echo "Per-agent scores in artifact \`baselines/\`. See classifier-agent's"
-            echo "drift-* workflows for cheap per-agent smoke (no validator-write)."
+            echo "Per-agent baselines uploaded to:"
+            echo "\`gs://thet-integration-af-assessorflow-materials/golden/e2e-baselines/${GH_RUN_ID}/\`"
+            echo ""
+            echo "af-golden scaled back down post-run."
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-baselines-${{ github.run_id }}
-          path: ${{ runner.temp }}/baselines/
-          retention-days: 365
