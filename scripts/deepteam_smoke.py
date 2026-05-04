@@ -157,9 +157,15 @@ def _build_models():
             text = await loop.run_in_executor(None, _call)
             return schema(**json.loads(text))
 
-    async def target_callback(input_text: str) -> str:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _broker_invoke, input_text, TARGET_TASK_KEY)
+    # DeepTeam calls model_callback synchronously inside its red_team loop
+    # (despite async_mode=False being passed at red_team() level). Returning
+    # a coroutine raises:
+    #   TypeError: The target model callback has returned an invalid response
+    #   of type <class 'coroutine'>. Please return either a string or an
+    #   'RTTurn' with role='assistant'.
+    # So target_callback must be a plain `def`, not `async def`.
+    def target_callback(input_text: str) -> str:
+        return _broker_invoke(input_text, TARGET_TASK_KEY)
 
     return ModelBrokerJudge(), target_callback
 
