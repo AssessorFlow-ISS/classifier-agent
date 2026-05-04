@@ -1,0 +1,148 @@
+name: E2E — Golden Pipeline (real validator-write + KS + classifier + …)
+
+# True end-to-end test that drives the full 13-stage assessment workflow
+# through every agent in the af-platform namespace. Unlike the per-agent
+# drift-* workflows (smoke; classifier-only with stub KS), this workflow
+# exercises:
+#   - real assessment creation via API server
+#   - real validator-agent: writes (potentially poisoned) chunks to KS
+#   - real classifier-agent: reads chunks via KS gRPC + classifies
+#   - real Q&A Gen, Evaluator, Reporting (all in af-platform)
+#   - real Pub/Sub orchestration
+#   - real L-10 guardrails (when triggered by adversarial chunks)
+#   - real Langfuse trace publishing — eval scores read back from Langfuse
+#
+# Each run scores per-agent traces with DeepEval and writes a fresh
+# baseline. RAG-poisoning + canary-leak validation lives here because
+# only this workflow involves the real validator-write path.
+#
+# Cost: ~$0.10–0.30 per run (full workflow, ~5 min real LLM time).
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # weekly Mon 14:00 SGT (Mon 06:00 UTC) — same slot as golden-rebaseline
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Scenario"
+        type: choice
+        default: "insufficient"
+        options: ["insufficient", "sufficient"]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: e2e-golden-pipeline
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: thet-integration-af
+  WIF_PROVIDER: projects/459087601514/locations/global/workloadIdentityPools/github-actions/providers/github
+  GCP_SA: github-actions@thet-integration-af.iam.gserviceaccount.com
+  CLUSTER: af-smoke-cluster
+  CLUSTER_LOCATION: asia-southeast1-b
+
+jobs:
+  e2e:
+    name: E2E / classifier-agent (real validator-write + KS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.CLUSTER }}
+          location: ${{ env.CLUSTER_LOCATION }}
+
+      - run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Port-forward api-server + orchestrator-db + langfuse
+        # Three port-forwards: golden_workflow_eval.py creates a real
+        # assessment via api-server, polls af_orchestrator DB for status,
+        # and reads Langfuse traces for per-agent scoring.
+        run: |
+          kubectl port-forward -n af-platform svc/api-server 8001:8001 > /tmp/pf-api.log 2>&1 &
+          echo $! > /tmp/pf-api.pid
+          kubectl port-forward -n af-platform svc/cloudsql-proxy 15432:5432 > /tmp/pf-db.log 2>&1 &
+          echo $! > /tmp/pf-db.pid
+          kubectl port-forward -n af-observability svc/langfuse-web 3000:3000 > /tmp/pf-lf.log 2>&1 &
+          echo $! > /tmp/pf-lf.pid
+          for i in 1 2 3 4 5 6 7 8; do
+            if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
+              echo "api-server ready"; break
+            fi
+            sleep 3
+          done
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev,eval]" deepeval deepteam
+          echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
+
+      - name: Run golden_workflow_eval.py (full e2e)
+        env:
+          API_SERVER_URL: http://localhost:8001
+          ORCHESTRATOR_DB_HOST: localhost
+          ORCHESTRATOR_DB_PORT: "15432"
+          ORCHESTRATOR_DB_NAME: af_orchestrator
+          ORCHESTRATOR_DB_USER: assessorflow
+          ORCHESTRATOR_DB_PASSWORD: ${{ secrets.ORCHESTRATOR_DB_PASSWORD }}
+          LANGFUSE_HOST: http://localhost:3000
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          GOLDEN_SCENARIO: ${{ inputs.scenario || 'insufficient' }}
+          BASELINE_DIR: ${{ runner.temp }}/baselines
+          WORKFLOW_TIMEOUT_S: "600"
+          DEEPEVAL_JUDGE_MODEL: gemini-2.0-flash
+        run: |
+          mkdir -p "${{ runner.temp }}/baselines"
+          python golden_workflow_eval.py
+
+      - name: Tear down port-forwards
+        if: always()
+        run: |
+          for pid_file in /tmp/pf-api.pid /tmp/pf-db.pid /tmp/pf-lf.pid; do
+            [ -f "$pid_file" ] && kill "$(cat "$pid_file")" 2>/dev/null || true
+          done
+
+      - name: Render summary
+        if: always()
+        run: |
+          {
+            echo "## E2E — Golden Pipeline / classifier-agent"
+            echo ""
+            echo "Full 13-stage assessment workflow exercised in af-platform:"
+            echo "real assessment creation → validator-write to KS → classifier"
+            echo "reads chunks via KS gRPC → Q&A Gen → Evaluator → Reporting."
+            echo ""
+            echo "**Scenario:** \`${{ inputs.scenario || 'insufficient' }}\`  "
+            echo "**Mode:** REAL all-agent e2e (not per-agent smoke)  "
+            echo "**Validator-write path:** EXERCISED (real chunks written to KS)  "
+            echo "**RAG/canary/poisoning testable:** YES (poisoned material → validator → KS → classifier observable)  "
+            echo ""
+            echo "Per-agent scores in artifact \`baselines/\`. See classifier-agent's"
+            echo "drift-* workflows for cheap per-agent smoke (no validator-write)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-baselines-${{ github.run_id }}
+          path: ${{ runner.temp }}/baselines/
+          retention-days: 365
