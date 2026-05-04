@@ -80,7 +80,9 @@ The 3 unit tests that previously asserted localhost-default behavior were invert
 | drift-llm-base | `0 4 * * 1` | 12:00 |
 | drift-retrieval-poisoning | `0 5 * * 1` | 13:00 |
 | golden-rebaseline | `0 6 * * 1` | 14:00 |
-| **e2e-golden-pipeline** | `0 6 * * 1` | 14:00 (concurrent with golden-rebaseline; different concurrency group) |
+| **e2e-golden-pipeline** | `0 6 * * 1` | 14:00 (concurrent with golden-rebaseline; different concurrency group `e2e-golden-pipeline`) |
+
+> **Note on the 14:00 SGT slot**: `golden-rebaseline` and `e2e-golden-pipeline` both fire at this slot but write to different artifacts (`baselines/` GCS prefix vs the run-scoped `e2e-baselines-${run_id}`). They do NOT block each other — confirmed via separate `concurrency.group` declarations. If you want strict ordering (rebaseline THEN e2e against the new baseline), bump e2e to `30 6 * * 1` and add `needs:` chaining via `workflow_run` trigger.
 
 `workflow_dispatch` enabled on every workflow.
 
@@ -115,7 +117,7 @@ Provider `github` on `thet-integration-af` accepts `repository_owner == 'assesso
 # 1. Confirm secrets are set
 gh secret list -R AssessorFlow-ISS/classifier-agent
 
-# 2. Confirm workflows registered (12 expected: 1 reusable + 9 drift + golden-rebaseline + e2e + ci)
+# 2. Confirm workflows registered (13 expected: 1 reusable + 9 drift + golden-rebaseline + e2e + ci)
 gh api repos/AssessorFlow-ISS/classifier-agent/actions/workflows --jq '.total_count, (.workflows[] | "\(.state) | \(.name)")'
 
 # 3. Confirm cron grid on main
@@ -124,9 +126,11 @@ for f in drift-{faithfulness,answer-relevancy,bias,contextual-precision,contextu
 done
 
 # 4. Confirm no localhost defaults remain in src/ + scripts/
+# Expected output: "OK: no localhost defaults in src/ or scripts/"
 git -C /Users/daleleung/Desktop/AssessorFlow-ISS-classifier-agent grep -nE "(http://|grpc://|=)\s*\"?localhost" -- src/ scripts/ \
   | grep -v "_grpc/" \
-  | grep -v "No localhost default"
+  | grep -v "No localhost default" \
+  || echo "OK: no localhost defaults in src/ or scripts/"
 
 # 5. Fire e2e for fresh proof
 gh workflow run "E2E — Golden Pipeline (real validator-write + KS + classifier + …)" \
