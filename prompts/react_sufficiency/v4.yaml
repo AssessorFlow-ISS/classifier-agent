@@ -1,0 +1,31 @@
+---
+version: "4"
+model_tier: CHEAP
+temperature: 0.1
+max_output_tokens: 1536
+top_p: 0.95
+confidence_threshold: 0.75
+description: "v4 of unified ReAct probe — historical record. v4 unified sufficiency + rubric fitness into one ReAct session; folded RubricFitnessAssessor into this probe; output schema extended with rubric_fitness, rubric_reasoning, rubric_source. Body content not preserved at commit time (the v4 generation predates per-version archival)."
+created: "2026-04-23"
+updated: "2026-04-23"
+fallback_chain: [vertex_ai, openai]
+patterns:
+  - "ReAct (Reason + Action)"
+  - "Contextual Grounding"
+  - "Tool Use"
+  - "Structured Output Enforcement"
+reconstructed: true
+body_preserved: false
+preservation_note: >
+  v4 was never committed as a standalone file. This record exists for
+  versioning provenance only. The historical body is not recoverable from
+  any single git SHA because v4's content was overwritten in-place by v5
+  on 2026-04-23. The schema additions that v4 introduced (rubric_fitness,
+  rubric_reasoning, rubric_source) are visible in v5.yaml's OUTPUT CONTRACT
+  block — the body that produced them is the closest available reference.
+---
+# v4 body not preserved at commit time
+#
+# This file is a historical placeholder. See preservation_note in the
+# frontmatter above. For runtime use, the active version is named in
+# MANIFEST.yaml's 'current' field; v4 is no longer the active version.

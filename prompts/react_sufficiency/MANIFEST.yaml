@@ -1,0 +1,43 @@
+template: react_sufficiency
+current: v6
+history:
+  - version: v6
+    file: v6.yaml
+    created: "2026-05-04"
+    body_preserved: true
+    summary: >
+      Adopt CREATE framework (Birss) as the explicit prompt scaffold.
+      Adds EXAMPLES section (the previously missing CREATE E1 slot) with
+      one PASS demonstration and one FAIL/MISALIGNED demonstration.
+      Re-organises existing prose under explicit CREATE headings without
+      changing schema, tool surface, or strategy.
+  - version: v5
+    file: v5.yaml
+    created: "2026-04-23"
+    body_preserved: true
+    summary: >
+      Split persona/rules/output contract (system_prompt) from per-workflow
+      task context (user prompt body). Fixes Gemini "contents must not be
+      empty" when only a system message is sent and makes the persona
+      visible to the model broker for tool-capable chat semantics.
+  - version: v4
+    file: v4.yaml
+    created: "2026-04-23"
+    body_preserved: false
+    reconstructed: true
+    summary: >
+      Unified sufficiency + rubric fitness into one ReAct session.
+      Folded RubricFitnessAssessor into this probe; output schema extended
+      with rubric_fitness, rubric_reasoning, rubric_source. v4's body was
+      overwritten in-place by v5 the same day; the v4.yaml file in this
+      directory is a frontmatter-only placeholder.
+  - version: v3
+    file: v3.yaml
+    created: "2026-04-05"
+    body_preserved: false
+    reconstructed: true
+    summary: >
+      Initial ReAct sufficiency probing with SimilaritySearch tool calls.
+      No rubric fitness; no SearchPolicies. v3's body was overwritten
+      in-place by v4 on 2026-04-23; the v3.yaml file in this directory is
+      a frontmatter-only placeholder.
