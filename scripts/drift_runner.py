@@ -80,26 +80,69 @@ _SESSION_ID = (
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
-def _broker_invoke(prompt: str, timeout: float = 90.0, max_retries: int = 2) -> str:
+def _clean_schema_for_gemini(schema_dict: dict) -> dict:
+    """Strip $defs / title / additionalProperties recursively + inline $ref.
+
+    Gemini's response_schema rejects these fields. Per
+    feedback_gemini_schema_compat user memory.
+    """
+    defs = schema_dict.get("$defs", {})
+
+    def _resolve(node):
+        if isinstance(node, dict):
+            if "$ref" in node:
+                ref_name = node["$ref"].rsplit("/", 1)[-1]
+                if ref_name in defs:
+                    return _resolve(defs[ref_name])
+            cleaned = {}
+            for k, v in node.items():
+                if k in {"$defs", "title", "additionalProperties"}:
+                    continue
+                cleaned[k] = _resolve(v)
+            return cleaned
+        if isinstance(node, list):
+            return [_resolve(x) for x in node]
+        return node
+
+    return _resolve({k: v for k, v in schema_dict.items() if k != "$defs"})
+
+
+def _broker_invoke(
+    prompt: str,
+    timeout: float = 90.0,
+    max_retries: int = 2,
+    response_schema: dict | None = None,
+) -> str:
     """Call Model Broker /api/v1/generate.
 
     The broker's GenerateRequest requires: prompt, task_key, session_id,
     agent_id, prompt_version. session_id uses a per-process value so all
     judge calls within one drift run share a budget bucket in Langfuse.
 
+    When `response_schema` is supplied, the broker forwards it to Gemini's
+    response_format='json' + response_schema mode so the LLM emits a
+    JSON-string matching the schema. Used by DeepEval's structured-output
+    path (statement extraction, per-statement verdicts, opinion extraction
+    for BiasMetric, etc.) where free-text returns make the metric
+    silently extract zero statements and default to score=0.
+
     Robustness: retries on transient HTTP statuses (429/5xx) and network
     errors with exponential backoff (1s, 2s); raises ValueError on empty
     content; lets non-retryable errors propagate so DeepEval can decide
     whether to fall back via its TypeError handler.
     """
-    body = json.dumps({
+    body_dict = {
         "prompt": prompt,
         "task_key": JUDGE_TASK_KEY,
         "session_id": _SESSION_ID,
         "agent_id": "drift-runner",
         "prompt_version": "testing/drift_runner@v1",
         "temperature": 0.0,
-    }).encode()
+    }
+    if response_schema is not None:
+        body_dict["response_format"] = "json"
+        body_dict["response_schema"] = response_schema
+    body = json.dumps(body_dict).encode()
 
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
@@ -157,17 +200,44 @@ def _build_judge():
         def get_model_name(self) -> str:
             return f"model-broker@{MODEL_BROKER_URL}"
 
-        # DeepEval-3.9+ may pass `schema=<pydantic-class>` for structured
-        # output via generate_with_schema(). We accept and ignore it here —
-        # the broker returns JSON-best-effort text and DeepEval falls back
-        # to text parsing. Other kwargs (max_tokens, temperature) likewise
-        # tolerated to avoid TypeError under the wrapper's TypeError-fallback.
-        def generate(self, prompt: str, *args, **kwargs) -> str:  # noqa: ARG002
-            return _broker_invoke(prompt)
+        # DeepEval-3.9+ passes `schema=<pydantic-class>` for structured
+        # output. AnswerRelevancyMetric, BiasMetric, ToxicityMetric and
+        # the verdict-extraction phases of FaithfulnessMetric /
+        # ContextualPrecisionMetric / ContextualRecallMetric all rely on
+        # this path: the metric prompts the judge with a request to emit
+        # a structured Statements / Verdicts / Opinions object, then
+        # accesses fields on the returned Pydantic instance.
+        #
+        # Honour the schema by:
+        #   1. Cleaning the Pydantic JSON-schema for Gemini compat (strip
+        #      $defs/title/additionalProperties, inline $ref).
+        #   2. Calling the broker with response_format='json' +
+        #      response_schema so Gemini emits JSON-matching-schema text.
+        #   3. Parsing the JSON text into the requested Pydantic class.
+        #
+        # If schema is None, return free-form text as before.
+        def _structured(self, prompt: str, schema):
+            try:
+                json_schema = _clean_schema_for_gemini(schema.model_json_schema())
+                text = _broker_invoke(prompt, response_schema=json_schema)
+                return schema(**json.loads(text))
+            except (json.JSONDecodeError, urllib.error.HTTPError, ValueError) as e:
+                # Surface as TypeError so DeepEval's wrapper falls back to
+                # plain-text parsing rather than crashing the whole metric.
+                raise TypeError(
+                    f"structured generate failed for schema={schema.__name__!r}: {e}"
+                ) from e
 
-        async def a_generate(self, prompt: str, *args, **kwargs) -> str:  # noqa: ARG002
+        def generate(self, prompt: str, *args, schema=None, **kwargs):  # noqa: ARG002
+            if schema is None:
+                return _broker_invoke(prompt)
+            return self._structured(prompt, schema)
+
+        async def a_generate(self, prompt: str, *args, schema=None, **kwargs):  # noqa: ARG002
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, _broker_invoke, prompt)
+            if schema is None:
+                return await loop.run_in_executor(None, _broker_invoke, prompt)
+            return await loop.run_in_executor(None, self._structured, prompt, schema)
 
     return ModelBrokerJudge()
 
