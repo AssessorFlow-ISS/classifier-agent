@@ -2,7 +2,7 @@
 
 Stateless FastAPI microservice for material sufficiency assessment and topic extraction.
 
-> **Naming note** — this repo (`AssessorFlow-ISS/classifier-agent`) is a refactor of the upstream `assessorflow/classification-agent` (which remains the production code path until the cutover). It is the home of the **REAL** golden + drift CI pipeline. The sister repo `AssessorFlow-ISS/classification-agent` is unrelated and off-limits — do NOT confuse the two.
+> **Naming note** — this repo (`AssessorFlow-ISS/classifier-agent`) is the home of the CICD for the Classification Agent with golden automation + drift CI pipeline. The sister repo `AssessorFlow-ISS/classification-agent` is archived and off-limits for SIT Env only.
 
 ## Provenance
 
