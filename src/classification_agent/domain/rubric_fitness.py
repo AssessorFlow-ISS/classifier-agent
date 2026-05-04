@@ -114,6 +114,7 @@ class RubricFitnessAssessor:
             workflow_id=workflow_id,
             response_format="json",
             response_schema=RUBRIC_FITNESS_SCHEMA,
+            prompt_version=self._prompt_version,
         )
         self.last_model_used = llm_result.get("model_used", "unknown")
 

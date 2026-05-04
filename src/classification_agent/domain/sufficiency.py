@@ -143,6 +143,7 @@ class ReactSufficiencyProber:
                 messages=messages,
                 tools=tools,
                 workflow_id=self._workflow_id,
+                prompt_version=self._prompt_version,
             )
             # Capture model_used from response (if available)
             if response.get("model_used"):

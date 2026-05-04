@@ -142,6 +142,7 @@ class StubModelBrokerAdapter(ModelBrokerPort):
         experiment_id: str | None = None,
         response_format: str | None = None,
         response_schema: dict | None = None,
+        prompt_version: str | None = None,
     ) -> dict[str, Any]:
         self._invocations.append(
             {
@@ -149,6 +150,7 @@ class StubModelBrokerAdapter(ModelBrokerPort):
                 "prompt": prompt,
                 "workflow_id": workflow_id,
                 "experiment_id": experiment_id,
+                "prompt_version": prompt_version,
             }
         )
         response = self._responses.get(task_key, {})
@@ -163,6 +165,7 @@ class StubModelBrokerAdapter(ModelBrokerPort):
         tools: list[dict[str, Any]],
         *,
         workflow_id: str | None = None,
+        prompt_version: str | None = None,
     ) -> dict[str, Any]:
         self._invocations.append(
             {
@@ -170,6 +173,7 @@ class StubModelBrokerAdapter(ModelBrokerPort):
                 "messages": messages,
                 "tools": tools,
                 "workflow_id": workflow_id,
+                "prompt_version": prompt_version,
             }
         )
         sequence = self._tool_call_responses.get(task_key, [])

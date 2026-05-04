@@ -56,6 +56,7 @@ class TestGuardrail422Retry:
                 "classification.sufficiency_check",
                 "Original prompt",
                 workflow_id="wf-guard",
+                prompt_version="classification/sufficiency_check@v1",
             )
             assert mock_post.await_count == 2
             second_body = mock_post.await_args_list[1].kwargs["json"]
@@ -81,6 +82,7 @@ class TestGuardrail422Retry:
         ):
             result = await adapter.invoke(
                 "classification.sufficiency_check", "prompt",
+                prompt_version="classification/sufficiency_check@v1",
             )
             assert result["guardrail_blocked"] is True
             assert result["sufficient"] is False
@@ -104,7 +106,7 @@ class TestJsonParseFallbacks:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json=resp_body, request=_mock_request()),
         ):
-            result = await adapter.invoke("t", "p")
+            result = await adapter.invoke("t", "p", prompt_version="classification/t@v1")
             assert result["topics"][0]["name"] == "A"
 
     async def test_parse_markdown_fenced_json(
@@ -120,7 +122,7 @@ class TestJsonParseFallbacks:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json=resp_body, request=_mock_request()),
         ):
-            result = await adapter.invoke("t", "p")
+            result = await adapter.invoke("t", "p", prompt_version="classification/t@v1")
             assert result["topics"] == ["B"]
 
     async def test_parse_first_brace_block(
@@ -136,7 +138,7 @@ class TestJsonParseFallbacks:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json=resp_body, request=_mock_request()),
         ):
-            result = await adapter.invoke("t", "p")
+            result = await adapter.invoke("t", "p", prompt_version="classification/t@v1")
             assert result["decision"] == "sufficient"
 
     async def test_parse_dict_content_passes_through(
@@ -152,7 +154,7 @@ class TestJsonParseFallbacks:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json=resp_body, request=_mock_request()),
         ):
-            result = await adapter.invoke("t", "p")
+            result = await adapter.invoke("t", "p", prompt_version="classification/t@v1")
             assert result["topics"] == ["X"]
 
     async def test_parse_unparseable_returns_raw(
@@ -167,7 +169,7 @@ class TestJsonParseFallbacks:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json=resp_body, request=_mock_request()),
         ):
-            result = await adapter.invoke("t", "p")
+            result = await adapter.invoke("t", "p", prompt_version="classification/t@v1")
             # When all three parse attempts fail, adapter returns {"content": ..., "model_used": ...}
             assert "content" in result
             assert result["model_used"] == "unknown"
@@ -197,6 +199,7 @@ class TestAdapterEnvConfig:
                 "t", "p",
                 response_format="json",
                 response_schema={"type": "object"},
+                prompt_version="classification/t@v1",
             )
             body = mock_post.call_args[1]["json"]
             assert body["response_format"] == "json"
@@ -228,6 +231,7 @@ class TestInvokeWithTools:
                 messages=[{"role": "user", "content": "hi"}],
                 tools=[{"type": "function", "function": {"name": "x"}}],
                 workflow_id="wf-tools",
+                prompt_version="classification/react_sufficiency@v6",
             )
             # Correct endpoint
             assert mock_post.call_args[0][0] == "/api/v1/generate-with-tools"
@@ -247,7 +251,10 @@ class TestInvokeWithTools:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json=resp_body, request=_mock_request(_TOOLS_URL)),
         ) as mock_post:
-            await adapter.invoke_with_tools("t", messages=[], tools=[])
+            await adapter.invoke_with_tools(
+                "t", messages=[], tools=[],
+                prompt_version="classification/t@v1",
+            )
             body = mock_post.call_args[1]["json"]
             assert body["session_id"] == "unknown"
             assert body["agent_id"] == "classification-agent"

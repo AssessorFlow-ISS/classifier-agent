@@ -47,6 +47,7 @@ class TestModelBrokerHttpAdapter:
                 "classification.topic_extraction",
                 "Extract topics from these chunks",
                 workflow_id="wf-test-001",
+                prompt_version="classification/topic_extraction@v1",
             )
 
             adapter._client.post.assert_called_once()
@@ -68,7 +69,9 @@ class TestModelBrokerHttpAdapter:
         mock_response = httpx.Response(200, json=success_response, request=_mock_request())
         with patch.object(adapter._client, "post", new_callable=AsyncMock, return_value=mock_response):
             result = await adapter.invoke(
-                "classification.topic_extraction", "prompt"
+                "classification.topic_extraction",
+                "prompt",
+                prompt_version="classification/topic_extraction@v1",
             )
             # Adapter parses JSON content string into dict, so result has
             # the parsed keys (e.g., "topics") not the raw "content" key
@@ -85,6 +88,7 @@ class TestModelBrokerHttpAdapter:
                 task_key="classification.sufficiency_check",
                 prompt="Check sufficiency",
                 workflow_id="wf-kw",
+                prompt_version="classification/sufficiency_check@v1",
             )
             # Parsed JSON — topics key present from parsed content
             assert result["model_used"] == "gemini-2.5-flash-lite"
@@ -100,7 +104,11 @@ class TestModelBrokerHttpAdapter:
         )
         with patch.object(adapter._client, "post", new_callable=AsyncMock, return_value=mock_response):
             with pytest.raises(httpx.HTTPStatusError):
-                await adapter.invoke("classification.topic_extraction", "prompt")
+                await adapter.invoke(
+                    "classification.topic_extraction",
+                    "prompt",
+                    prompt_version="classification/topic_extraction@v1",
+                )
 
     async def test_invoke_raises_on_connection_error(
         self, adapter: ModelBrokerHttpAdapter
@@ -112,23 +120,49 @@ class TestModelBrokerHttpAdapter:
             side_effect=httpx.ConnectError("Connection refused"),
         ):
             with pytest.raises(httpx.ConnectError):
-                await adapter.invoke("classification.topic_extraction", "prompt")
+                await adapter.invoke(
+                    "classification.topic_extraction",
+                    "prompt",
+                    prompt_version="classification/topic_extraction@v1",
+                )
 
-    async def test_prompt_version_format(
+    async def test_prompt_version_passthrough(
         self, adapter: ModelBrokerHttpAdapter, success_response: dict
     ) -> None:
+        """Caller-supplied prompt_version is forwarded verbatim (no @v1 hardcode)."""
         mock_response = httpx.Response(200, json=success_response, request=_mock_request())
         with patch.object(adapter._client, "post", new_callable=AsyncMock, return_value=mock_response):
-            await adapter.invoke("classification.topic_extraction", "prompt")
+            await adapter.invoke(
+                "classification.react_sufficiency",
+                "prompt",
+                prompt_version="classification/react_sufficiency@v6",
+            )
             body = adapter._client.post.call_args[1]["json"]
-            assert body["prompt_version"] == "classification/topic_extraction@v1"
+            # The forwarded version is exactly what the caller passed — no
+            # rewrite, no fallback to @v1, no derivation from task_key.
+            assert body["prompt_version"] == "classification/react_sufficiency@v6"
+
+    async def test_invoke_raises_when_prompt_version_missing(
+        self, adapter: ModelBrokerHttpAdapter
+    ) -> None:
+        """Defence: the broker must refuse to send a request without prompt_version.
+
+        Silent fallback to '@v1' was the prior bug; this test guards against
+        regression. Langfuse traces depend on the real version.
+        """
+        with pytest.raises(ValueError, match="prompt_version is required"):
+            await adapter.invoke("classification.topic_extraction", "prompt")
 
     async def test_default_workflow_id(
         self, adapter: ModelBrokerHttpAdapter, success_response: dict
     ) -> None:
         mock_response = httpx.Response(200, json=success_response, request=_mock_request())
         with patch.object(adapter._client, "post", new_callable=AsyncMock, return_value=mock_response):
-            await adapter.invoke("classification.topic_extraction", "prompt")
+            await adapter.invoke(
+                "classification.topic_extraction",
+                "prompt",
+                prompt_version="classification/topic_extraction@v1",
+            )
             body = adapter._client.post.call_args[1]["json"]
             assert body["session_id"] == "unknown"
 
