@@ -1,0 +1,74 @@
+# Minimal cloudsql-proxy deployment for the e2e-golden-pipeline workflow.
+#
+# WHY socat (not the Cloud SQL Auth Proxy):
+# - Cloud SQL Auth Proxy requires roles/cloudsql.client on the bound GSA.
+#   The existing assessorflow-agent GSA does not have this role; adding it
+#   would mutate a shared GSA used by every af-agents pod.
+# - The Cloud SQL instance (af-smoke-db) is already reachable via its
+#   private IP (10.115.0.3:5432) from any pod in the GKE cluster (VPC
+#   peering). socat just forwards TCP bytes; PostgreSQL handles auth via
+#   the username/password the caller already has (from K8s Secrets +
+#   GH Actions secrets via ORCHESTRATOR_DB_PASSWORD).
+#
+# WHAT this gives us:
+# - svc/cloudsql-proxy in af-platform exposing port 5432
+# - kubectl port-forward -n af-platform svc/cloudsql-proxy 15432:5432
+#   from a GH Actions runner connects through to af-smoke-db at
+#   10.115.0.3:5432 transparently, enabling golden_workflow_eval.py to
+#   poll workflow status from outside the cluster
+#
+# SCOPE LIMIT: this is for TEST infra (GH Actions e2e job only). It is
+# not a production data path — production agents already have direct
+# private-IP access to the same Cloud SQL.
+#
+# TO APPLY: kubectl apply -f .github/workflows/cloudsql-proxy-manifest.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudsql-proxy
+  namespace: af-platform
+  labels:
+    app: cloudsql-proxy
+    purpose: e2e-test-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudsql-proxy
+  template:
+    metadata:
+      labels:
+        app: cloudsql-proxy
+    spec:
+      containers:
+        - name: socat
+          image: alpine/socat:1.7.4.4
+          args:
+            - "TCP-LISTEN:5432,fork,reuseaddr"
+            - "TCP:10.115.0.3:5432"
+          ports:
+            - containerPort: 5432
+              name: postgres
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudsql-proxy
+  namespace: af-platform
+  labels:
+    app: cloudsql-proxy
+spec:
+  selector:
+    app: cloudsql-proxy
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: postgres
+  type: ClusterIP
