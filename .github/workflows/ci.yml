@@ -227,9 +227,12 @@ jobs:
           done
 
       - name: Install package + DeepEval
+        # NO `||` fallback. If `.[dev,eval]` extra is missing, that's a
+        # packaging bug we want to surface, not paper over with a degraded
+        # install. Earlier rev silently degraded to `.[dev] deepeval`.
         run: |
           pip install --upgrade pip
-          pip install -e ".[dev,eval]" || pip install -e ".[dev]" deepeval
+          pip install -e ".[dev,eval]"
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
 
       - name: DeepEval — 4 quality metrics against REAL Model Broker
@@ -306,7 +309,7 @@ jobs:
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
           npm install -g promptfoo
 
-      - name: DeepTeam — 8 adversarial categories against REAL Model Broker
+      - name: DeepTeam — 8 vulnerability categories against REAL Model Broker
         # NO `|| true` — script must succeed. NO placeholder-emitting fallback —
         # if scripts/deepteam_smoke.py is missing, that's a repo-state bug
         # we want to surface, not paper over with a fake "skipped" result.
@@ -318,7 +321,7 @@ jobs:
           python scripts/deepteam_smoke.py \
             --output ci-llm-adversarial-artifacts/deepteam/results.json
 
-      - name: Promptfoo — 3 OWASP categories against REAL Model Broker
+      - name: Promptfoo — 3 OWASP categories (LLM05/LLM08/LLM10, non-overlapping)
         # promptfoo.yaml uses ${MODEL_BROKER_URL} placeholders; promptfoo's URL
         # parser does NOT expand process env in http provider URL fields, so
         # we envsubst the YAML before invoking the eval.
@@ -365,11 +368,15 @@ jobs:
           pip install -e ".[dev]"
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
 
-      - name: Start DAST target app on :8000
-        # scripts/dast_target_app.py is a minimal FastAPI mirror of the
-        # classifier's HTTP surface (/health, /ready, /invoke). Avoids the
-        # main app's deep af_shared.adapters dependencies which aren't in
-        # the vendored shim. ZAP spider only needs the routes to exist.
+      - name: Start HTTP surface on :8000 for ZAP baseline
+        # scripts/dast_target_app.py mirrors the classifier's route shapes
+        # (/, /health, /ready, /classify) so ZAP can scan HTTP-layer
+        # security (headers, methods, error disclosure). The real app
+        # imports af_shared.adapters.factory which is not in the vendored
+        # shim — that gap is tracked debt (PAT install of
+        # assessorflow/shared). ZAP does NOT score classification logic
+        # or LLM behavior; those are exercised by DeepEval/DeepTeam/
+        # Promptfoo against the real af-platform Model Broker.
         run: |
           nohup uvicorn scripts.dast_target_app:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
           echo $! > /tmp/app.pid

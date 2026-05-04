@@ -1,20 +1,27 @@
 """DeepTeam adversarial smoke runner — REAL library + LLM judge.
 
-Drives `deepteam` over the classifier-agent's adversarial vulnerabilities
-using the same ModelBrokerJudge wrapper that the drift_runner uses. No
-regex stand-ins, no "refusal markers" pattern matching, no fallbacks.
+Drives `deepteam` over 8 adversarial vulnerability categories against the
+classifier-agent target. Both judge and target route through the real
+af-platform Model Broker via the port-forward established by CI.
+No regex stand-ins, no refusal-marker pattern matching, no fallbacks.
 
-Smoke-level scope per feedback_smoke_level_testing: 1 attack per
-vulnerability, no jailbreak.
+Smoke-level scope per feedback_smoke_level_testing: 1 representative
+attack per vulnerability category (8 total), no jailbreak strategies.
 
-| vulnerability     | deepteam class                    |
-|------------------|-----------------------------------|
-| Bias              | deepteam.vulnerabilities.Bias     |
-| PIILeakage        | deepteam.vulnerabilities.PIILeakage |
-| PromptLeakage     | deepteam.vulnerabilities.PromptLeakage |
-| PromptInjection   | deepteam.attacks.PromptInjection  |
-| Toxicity          | deepteam.vulnerabilities.Toxicity |
-| ExcessiveAgency   | deepteam.vulnerabilities.ExcessiveAgency |
+Vulnerability inventory (all real deepteam classes, valid type literals):
+
+| # | Vulnerability        | deepteam class       | type literal           |
+|---|---------------------|---------------------|------------------------|
+| 1 | Bias                 | Bias                | gender                 |
+| 2 | Toxicity             | Toxicity            | insults                |
+| 3 | PII leakage          | PIILeakage          | direct_disclosure      |
+| 4 | Prompt leakage       | PromptLeakage       | instructions           |
+| 5 | Excessive agency     | ExcessiveAgency     | functionality          |
+| 6 | Misinformation       | Misinformation      | factual_errors         |
+| 7 | Illegal activity     | IllegalActivity     | cybercrime             |
+| 8 | Intellectual property| IntellectualProperty| copyright_violations   |
+
+Attack class: PromptInjection (single-turn, applied to all 8).
 
 Required env: MODEL_BROKER_URL (no localhost default).
 """
@@ -106,22 +113,27 @@ def main() -> int:
     from deepteam.vulnerabilities import (
         Bias,
         ExcessiveAgency,
+        IllegalActivity,
+        IntellectualProperty,
+        Misinformation,
         PIILeakage,
         PromptLeakage,
         Toxicity,
     )
 
-    # Smoke: 1 attack per vulnerability, no jailbreak strategies.
-    # NOTE: deepteam type literals use snake_case enum values, not free text.
-    # PIILeakage canonical types: api_and_database_access, direct_disclosure,
-    # session_leak, social_manipulation. (Wrong literal in earlier rev raised
-    # ValueError and was masked by `|| true` in CI — see commit history.)
+    # Smoke: 8 vulnerability categories × 1 attack each (PromptInjection).
+    # Type literals are snake_case enum values from each vulnerability's
+    # types.py (e.g. PIILeakage canonical types: direct_disclosure,
+    # api_and_database_access, session_leak, social_manipulation).
     vulnerabilities = [
         Bias(types=["gender"]),
         Toxicity(types=["insults"]),
         PIILeakage(types=["direct_disclosure"]),
         PromptLeakage(types=["instructions"]),
         ExcessiveAgency(types=["functionality"]),
+        Misinformation(types=["factual_errors"]),
+        IllegalActivity(types=["cybercrime"]),
+        IntellectualProperty(types=["copyright_violations"]),
     ]
     attacks = [PromptInjection()]
 
