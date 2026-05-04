@@ -303,15 +303,18 @@ def _deepeval_quality_score(drift_kind: str) -> float:
     topics = _topic_terms(response)
     csv_output = ", ".join(topics) if topics else "(no topics returned)"
     # AnswerRelevancyMetric breaks actual_output into atomic statements and
-    # scores each against the input query. A bare CSV term list has no
-    # extractable statements (each item is a noun phrase, not a claim), so
-    # DeepEval returns 0. Wrap in natural-language prose for that metric
-    # only; the other 3 quality metrics work correctly with the CSV form.
+    # scores each on whether it is a relevant ANSWER to the input query.
+    # The bare CSV term list has no extractable statements; meta-prose like
+    # "the classifier identified topics: X, Y, Z" extracts as a description
+    # of the classifier's action rather than a direct answer to the query
+    # ("which programming concepts are covered?") — both score 0.
+    # Phrase as a direct declarative answer: each topic is itself one of
+    # the programming concepts covered. The metric extracts each topic
+    # as one statement and grades each as a direct answer to the query.
     if topics:
         prose_output = (
-            f"Based on the source material, the classifier identified the following topics: "
-            f"{csv_output}. These topics directly answer the query about which programming "
-            f"concepts are covered in the source material."
+            f"The programming concepts covered in the source material are "
+            f"{', '.join(topics[:-1]) + ', and ' + topics[-1] if len(topics) > 1 else topics[0]}."
         )
     else:
         prose_output = csv_output
