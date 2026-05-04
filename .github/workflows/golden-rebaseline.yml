@@ -32,6 +32,11 @@ env:
   GCP_SA: github-actions@thet-integration-af.iam.gserviceaccount.com
   CLUSTER: af-smoke-cluster
   CLUSTER_LOCATION: asia-southeast1-b
+  # Port-forward URLs — single source of truth. Updating the forward port
+  # below is a 1-line change. Source code never defaults these — must be
+  # passed via env to scripts/golden_rebaseline.py and scripts/drift_runner.py.
+  KS_PF_URL: http://127.0.0.1:8020
+  MB_PF_URL: http://127.0.0.1:8010
 
 jobs:
   rebaseline:
@@ -78,19 +83,25 @@ jobs:
           done
 
       - name: Install package
+        # Same install contract as drift workflows: real DeepEval + DeepTeam
+        # required (no silent fallback). golden_rebaseline.py shells out to
+        # drift_runner.py 9 times, each of which calls real LLM judges.
         run: |
           pip install --upgrade pip
-          pip install -e ".[dev]" || pip install -e .
+          pip install -e ".[dev,eval]" deepeval deepteam
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
 
       - name: Re-baseline (real af-platform Model Broker + KS)
+        # Port-forward URLs are derived from the established forwards above.
+        # Single source of truth: workflow env block. Same localhost shape as
+        # drift but consumed via env vars — script has no defaults.
         env:
           SCENARIO: ${{ inputs.scenario || 'sufficient' }}
           GCS_BUCKET: ${{ env.GCS_BUCKET }}
           KNOWLEDGE_SERVICE_ADAPTER: http
           MODEL_BROKER_ADAPTER: http
-          KS_URL: http://localhost:8020
-          MODEL_BROKER_URL: http://localhost:8010
+          KS_URL: ${{ env.KS_PF_URL }}
+          MODEL_BROKER_URL: ${{ env.MB_PF_URL }}
         run: |
           python scripts/golden_rebaseline.py
 

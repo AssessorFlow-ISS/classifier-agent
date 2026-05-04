@@ -29,6 +29,11 @@ env:
   GCP_SA: github-actions@thet-integration-af.iam.gserviceaccount.com
   CLUSTER: af-smoke-cluster
   CLUSTER_LOCATION: asia-southeast1-b
+  # Port-forward URL — single source of truth for the loopback target the
+  # script consumes via MODEL_BROKER_URL. Source code never defaults this
+  # (drift_runner.py raises on missing). Updating the port below is the
+  # only place this URL appears in workflow definitions.
+  MB_PF_URL: http://127.0.0.1:8010
 
 jobs:
   drift-check:
@@ -89,11 +94,15 @@ jobs:
           echo "PYTHONPATH=${{ github.workspace }}/vendor:${PYTHONPATH:-}" >> "$GITHUB_ENV"
 
       - name: Run drift runner (real Model Broker, stub KS)
+        # MODEL_BROKER_URL sourced from the workflow env block. Note that the
+        # classifier itself uses the StubKnowledgeServiceAdapter for drift —
+        # synthetic workflow_ids would 500 against the real KS. RAG-poisoning
+        # of the live KS path is covered by e2e-golden-pipeline, not here.
         env:
           GCS_BUCKET: ${{ env.GCS_BUCKET }}
           KNOWLEDGE_SERVICE_ADAPTER: stub
           MODEL_BROKER_ADAPTER: http
-          MODEL_BROKER_URL: http://localhost:8010
+          MODEL_BROKER_URL: ${{ env.MB_PF_URL }}
         run: |
           python scripts/drift_runner.py \
             --drift-kind ${{ inputs.drift_kind }} \
