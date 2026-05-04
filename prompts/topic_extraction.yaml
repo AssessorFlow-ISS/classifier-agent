@@ -1,26 +1,102 @@
 ---
-version: "1"
+version: "2"
 model_tier: CHEAP
 temperature: 0.2
 max_output_tokens: 1024
 top_p: 0.95
-description: "Extract topic and subtopic hierarchy from document chunks"
+description: "Hierarchical topic + subtopic extractor from document chunks. v2 adopts the CREATE framework (Birss) with explicit Character, EXAMPLES, and edge-case Extras."
 created: "2026-03-25"
-updated: "2026-03-29"
+updated: "2026-05-04"
 fallback_chain: [vertex_ai, openai]
+patterns:
+  - "CREATE framework (Birss): C-R-E-A-T-E"
+  - "Role Prompting"
+  - "Structured Output Enforcement"
+changelog: >
+  v2 (2026-05-04): Adopt CREATE framework. Added Character (explicit
+  persona), Adjustments (granularity rules, language preservation), EXAMPLES
+  (one well-structured corpus and one sparse-corpus fallback), and EXTRAS for
+  OCR-noisy / conflicting / non-English / empty-corpus cases.
+  v1 (2026-03-29): Initial topic-extraction prompt with hierarchical schema.
 ---
-Analyze the following document chunks and extract a hierarchical topic structure.
+CHARACTER
+
+You are the topic extractor for AssessorFlow. Given a set of document
+chunks from an uploaded learning resource, return a hierarchical
+topic structure (main topics + subtopics) that captures the distinct
+knowledge areas the chunks teach.
+
+REQUEST
+
+Analyze the following document chunks and extract a hierarchical
+topic tree.
 
 Chunks:
 {chunks}
 
-Create a hierarchy of main topics and subtopics. Each topic should represent
-a distinct knowledge area. Subtopics are specific concepts within a main topic.
+ADJUSTMENTS
 
-Respond in JSON:
+- Each main topic should represent a distinct knowledge area
+  (not a sub-aspect of another topic).
+- Subtopics are specific concepts within a main topic.
+- Keep topic names concise (1 to 6 words) and consistent in
+  granularity within the tree.
+- Use the language of the source material; do not silently translate.
+
+EXAMPLES
+
+EXAMPLE 1: well-structured corpus (Scrum manual)
+
+  Chunks: [intro to Scrum; Sprint planning; Daily Scrum; Sprint Review;
+           Sprint Retrospective; Product Owner role; Scrum Master role;
+           Development Team; Product Backlog; Sprint Backlog; Increment]
+
+  Output:
+    {{"topics": [
+      {{"name": "Scrum Events", "subtopics": [
+        {{"name": "Sprint Planning"}}, {{"name": "Daily Scrum"}},
+        {{"name": "Sprint Review"}}, {{"name": "Sprint Retrospective"}}
+      ]}},
+      {{"name": "Scrum Roles", "subtopics": [
+        {{"name": "Product Owner"}}, {{"name": "Scrum Master"}},
+        {{"name": "Development Team"}}
+      ]}},
+      {{"name": "Scrum Artefacts", "subtopics": [
+        {{"name": "Product Backlog"}}, {{"name": "Sprint Backlog"}},
+        {{"name": "Increment"}}
+      ]}}
+    ]}}
+
+EXAMPLE 2: sparse corpus (one chunk only)
+
+  Chunks: [single intro chunk on photosynthesis]
+
+  Output:
+    {{"topics": [
+      {{"name": "Photosynthesis", "subtopics": [
+        {{"name": "Light-dependent reactions"}},
+        {{"name": "Light-independent reactions"}}
+      ]}}
+    ]}}
+
+TYPE OF OUTPUT
+
+Respond in JSON only, no prose:
 {{
     "topics": [
         {{"name": "Main Topic 1", "subtopics": [{{"name": "Subtopic 1a"}}, {{"name": "Subtopic 1b"}}]}},
         ...
     ]
 }}
+
+EXTRAS
+
+- OCR-noisy chunks: skip illegible fragments rather than inventing
+  topic names from noise.
+- Conflicting chunks: prefer the topic structure best supported by
+  the largest coherent subset; do not merge contradictory taxonomies.
+- Non-English chunks: extract topics in the source language; do not
+  translate. Mixed-language corpora: group by topic, not by language.
+- If the chunks do not support any defensible topic structure, return
+  {{"topics": []}} so the agent's downstream gate can route this as a
+  topic-extraction failure.

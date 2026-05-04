@@ -3,63 +3,70 @@
 This directory holds the YAML system prompts the Classification Agent loads at
 startup via `vendor/af_shared/utils/prompt_loader.load_prompt`.
 
-## Filename convention
+## Single canonical file per prompt; Git history is the version archive
 
-| Filename pattern | Meaning | Loader behaviour |
-|---|---|---|
-| `<task>.yaml` | **Canonical / production** prompt for that task. The version inside the file (`version:` field) is the deployed version. | Loaded by hardcoded path in `src/classification_agent/domain/*.py` (e.g. `prompts/react_sufficiency.yaml`). |
-| `<task>_v<N>.yaml` | **Design-intent** prompt awaiting promotion. Carries the proposed next version of the task's prompt; sibling to the canonical file. | Not loaded by production. Visible to reviewers, regression tests, and CI as the candidate for the next deploy. |
-| `_versions/<task>_v<N>.yaml` | **Archived superseded** prompt. Frozen historical record of a version that has been promoted out of production. | Not loaded by production. Available for regression baselines and rollback. |
+Each task has exactly **one** YAML file (e.g. `react_sufficiency.yaml`); the
+production loader reads it via a hardcoded path in
+`src/classification_agent/domain/{sufficiency,rubric_fitness,topic_extractor}.py`.
+The version inside each file (`version:` field) is the deployed version; older
+versions are recoverable from Git history via
+`git show <SHA>:prompts/<file>.yaml` and via the `changelog:` field that each
+prompt maintains as a running narrative.
 
-## Promotion flow (when a `_v<N>.yaml` ships to production)
+This mirrors the Validator Agent's prompt-versioning pattern documented at
+`prompt_regression_n_data_versioning_ci.md` (single-file-per-prompt, version
+field bumps inline, Git is source of truth).
 
-1. Run the prompt-regression CI gate (`.github/workflows/prompt-regression.yml`)
-   against the candidate. The gate reads the `_v<N>.yaml` file directly.
-2. If the gate passes (absolute thresholds + 10% relative tolerance against the
-   latest baseline on Confident AI), the promotion PR does the swap:
-   - Move the current canonical to `_versions/<task>_v<oldN>.yaml`.
-   - Rename `<task>_v<newN>.yaml` to `<task>.yaml` (the new canonical).
-   - Update the `agent_decision_log.prompt_version` write path so audit rows
-     show the new version from the next workflow run onward.
-3. The promotion PR runs the full per-merge gate again. Merge to `main` is
-   what flips production to the new prompt.
+## When to bump a prompt's version
 
-## Why two-file (canonical + `_v<N>`) instead of in-place version bumps?
-
-The Validator Agent's `prompt_regression_n_data_versioning_ci.md` describes
-single-file-per-prompt versioning where Git history is the source of truth.
-That works when the deploy cadence is "every merge to main is a deploy".
-The Classification Agent uses a slower promotion cadence (CREATE-framework
-upgrades, eval-baseline shifts) where the design-intent file needs to live
-in the repo for review and regression *without* being loaded by production
-until a deliberate promotion PR is opened. Keeping both files visible in
-`prompts/` makes the diff explicit and lets reviewers see exactly what is
-being promoted.
+| Trigger | Action |
+|---|---|
+| New persona, new instructions, new examples, new constraints | Bump `version`; append a changelog entry; commit. |
+| Model-tier swap, temperature or sampling-parameter change | Bump `version`; changelog entry. |
+| Schema change in the output contract | Bump `version`; coordinate with the consuming Pydantic model in `domain/response_models.py` in the same PR. |
+| Typo fix, comment-only change, formatting tidy | Do **not** bump `version`; the deployed behaviour does not change. |
 
 ## Status field convention
 
-Each YAML's frontmatter declares its status explicitly:
+Each YAML's frontmatter may declare its status:
 
-| `status:` value | Meaning |
+| `status:` value (or omitted) | Meaning |
 |---|---|
-| (omitted) | Canonical production prompt. |
-| `design-intent` | Awaiting promotion via the regression gate. |
-| `archived` | Lives under `_versions/`; preserved for regression baselines and rollback. |
+| (omitted) | Canonical production prompt actively loaded by the agent. |
 | `legacy` | Canonical filename retained for backward compatibility, but the production code path no longer loads it (see `superseded_by:` field). |
+
+`sufficiency_check.yaml` is the current legacy example: it predates the unified
+ReAct probe in `react_sufficiency.yaml` v5+ and is preserved as a regression
+baseline only.
 
 ## Current state (2026-05-04)
 
-| Canonical file | Current production version | Design-intent candidate |
-|---|---|---|
-| `react_sufficiency.yaml` | v5 | `react_sufficiency_v6.yaml` (CREATE-framework adoption) |
-| `rubric_fitness.yaml` | v2 | `rubric_fitness_v3.yaml` (CREATE-framework adoption) |
-| `topic_extraction.yaml` | v1 | `topic_extraction_v2.yaml` (CREATE-framework adoption) |
-| `rubric_synthesis.yaml` | v2 | `rubric_synthesis_v3.yaml` (CREATE-framework adoption) |
-| `sufficiency_check.yaml` | v2 (legacy, superseded by `react_sufficiency.yaml v5+`) | None planned. Kept as regression baseline only. |
+| File | Version | Status | Notes |
+|---|---|---|---|
+| `react_sufficiency.yaml` | v6 | active | CREATE-framework adoption; centerpiece. |
+| `rubric_fitness.yaml` | v3 | active | CREATE-framework adoption. |
+| `topic_extraction.yaml` | v2 | active | CREATE-framework adoption. |
+| `rubric_synthesis.yaml` | v3 | active | CREATE-framework adoption. |
+| `sufficiency_check.yaml` | v2 | legacy | Superseded by `react_sufficiency.yaml v5+` in the production code path; kept as regression baseline. |
 
-The four `_v<N>` files in this PR introduce the CREATE prompt-engineering
-framework (Birss: Character / Request / Examples / Adjustments / Type of
-output / Extras) as the explicit prompt scaffold. The most consequential
-change is the EXAMPLES section that was previously absent across all five
-prompts; its absence was the dominant gap in the prior CREATE coverage
-audit (see `[draft v1] Dale Leung - Classification Agent.md` Section 2.6).
+The CREATE prompt-engineering framework (Birss: Character / Request / Examples
+/ Adjustments / Type of output / Extras) is the explicit prompt scaffold for
+all four active prompts. The most consequential change introduced by this
+adoption was the EXAMPLES section that was previously absent across all five
+prompts; see Section 2.6 of the Classification Agent individual report for the
+full coverage audit and design-intent rationale.
+
+## Promotion safety
+
+When a prompt's `version` is bumped, the deployment is gated by:
+
+1. Per-PR DeepEval smoke (12 cases, 4 metrics) on the dev branch.
+2. Per-PR Promptfoo OWASP smoke.
+3. Full prompt-regression gate on merge to `main` (planned; modelled on the
+   Validator Agent's `prompt_regression_n_data_versioning_ci.md` pattern: pull
+   golden corpus from GCS, run real-pipeline scoring with DeepEval GEval,
+   absolute thresholds + 10% relative tolerance against the latest baseline).
+
+Until the full regression gate is wired up, prompt bumps are gated only by the
+per-PR smoke; this is tracked as **debt** under Section B.6.7 of the agent's
+individual report.
