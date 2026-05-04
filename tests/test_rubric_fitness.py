@@ -254,7 +254,10 @@ class TestRubricFitnessAssessor:
             knowledge_service=ks,
         )
 
-        assert assessor.prompt_version.startswith("classifier-agent/")
+        # ADR-39 format `<agent>/<template>@v<n>`; `<agent>` derives from
+        # checkout dir so match the suffix and presence of `@v` only.
+        assert "/" in assessor.prompt_version
+        assert "@v" in assessor.prompt_version
         assert "@v" in assessor.prompt_version
 
     async def test_aligned_rubric_returns_use_as_is(self) -> None:

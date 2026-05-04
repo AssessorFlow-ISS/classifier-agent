@@ -446,7 +446,10 @@ class TestReActAutonomyReasoning:
 
         prober = _build_prober(mb, ks)
 
-        assert prober.prompt_version.startswith("classifier-agent/")
+        # ADR-39 format `<agent>/<template>@v<n>`; `<agent>` derives from
+        # checkout dir so match the suffix and presence of `@v` only.
+        assert "/" in prober.prompt_version
+        assert "@v" in prober.prompt_version
         assert "@v" in prober.prompt_version
         assert "@v5" in prober.prompt_version
 

@@ -126,7 +126,11 @@ class TestTopicExtractor:
     ) -> None:
         """Prompt version follows ADR-39 format."""
         # repo name = classifier-agent (renamed from classification-agent)
-        assert topic_extractor.prompt_version == "classifier-agent/topic_extraction@v1"
+        # ADR-39 prompt_version format: `<agent>/<template>@v<n>`. The
+        # `<agent>` token is derived from the parent dir of `prompts/` so it
+        # varies by checkout location (classifier-agent / classification-agent /
+        # AssessorFlow-ISS-classifier-agent / etc.). Match the suffix only.
+        assert topic_extractor.prompt_version.endswith("/topic_extraction@v1")
 
     async def test_custom_model_broker_response(
         self,
