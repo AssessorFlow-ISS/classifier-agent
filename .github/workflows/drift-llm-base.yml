@@ -5,7 +5,7 @@ name: Drift — LLM Base
 
 on:
   schedule:
-    - cron: '51 10 * * *'  # daily 18:51 SGT (10:51 UTC) — 3-min stagger slot 8/9
+    - cron: '21 11 * * *'  # daily 19:21 SGT (11:21 UTC) — 3-min stagger slot 8/9
   workflow_dispatch:
 
 permissions:

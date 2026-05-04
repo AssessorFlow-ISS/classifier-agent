@@ -4,7 +4,7 @@ name: Drift — Score Consistency
 
 on:
   schedule:
-    - cron: '45 10 * * *'  # daily 18:45 SGT (10:45 UTC) — 3-min stagger slot 6/9
+    - cron: '15 11 * * *'  # daily 19:15 SGT (11:15 UTC) — 3-min stagger slot 6/9
   workflow_dispatch:
 
 permissions:
