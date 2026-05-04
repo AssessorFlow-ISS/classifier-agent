@@ -288,10 +288,11 @@ class TestAdapterLifecycle:
         adapter = KnowledgeServiceHttpAdapter()
         assert adapter._base_url == "http://ks-from-env:9000"
 
-    def test_fallback_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_ks_url_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # PROD-safety: no source-code localhost default. Missing env must raise.
         monkeypatch.delenv("KS_URL", raising=False)
-        adapter = KnowledgeServiceHttpAdapter()
-        assert "localhost:8020" in adapter._base_url
+        with pytest.raises(RuntimeError, match="KS_URL env var is required"):
+            KnowledgeServiceHttpAdapter()
 
     async def test_close_closes_client(self) -> None:
         adapter = KnowledgeServiceHttpAdapter(base_url=_KS_URL)
